@@ -50,7 +50,7 @@ jobs:
         run: chmod +x gradlew
         
       - name: Build APK
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease -PCI_VERSION_CODE=${{ github.run_number }} -PCI_VERSION_NAME=${{ steps.version.outputs.version }}
         
       - name: Sign APK
         if: env.HAS_KEYSTORE == 'true'
