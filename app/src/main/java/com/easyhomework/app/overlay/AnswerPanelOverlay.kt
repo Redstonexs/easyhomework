@@ -14,6 +14,8 @@ import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.*
+import android.view.ContextThemeWrapper
+import com.easyhomework.app.R
 import com.easyhomework.app.data.AppDatabase
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.QueryHistory
@@ -38,16 +40,40 @@ class AnswerPanelOverlay(
     context: Context,
     private val screenshotBitmap: Bitmap,
     private val recognizedText: String
-) : FrameLayout(context) {
+) : FrameLayout(wrapContextIfNeeded(context)) {
+
+    companion object {
+        /**
+         * Wrap the context with a ContextThemeWrapper if it's not an Activity.
+         * This ensures Views and Markwon can resolve theme attributes properly
+         * when created from a Service context (e.g., FloatingBallService).
+         */
+        private fun wrapContextIfNeeded(context: Context): Context {
+            return try {
+                if (context is android.app.Activity) {
+                    context
+                } else {
+                    ContextThemeWrapper(context, R.style.Theme_EasyHomework)
+                }
+            } catch (e: Exception) {
+                context
+            }
+        }
+    }
 
     var onClose: (() -> Unit)? = null
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val llmRepository = LLMRepository()
-    private val preferencesManager = PreferencesManager(context)
-    private val markwon: Markwon = Markwon.create(context)
+    private val preferencesManager = PreferencesManager(getContext())
+    private val markwon: Markwon = try {
+        Markwon.create(getContext())
+    } catch (e: Exception) {
+        // Fallback: build a minimal Markwon without theme-dependent plugins
+        Markwon.builder(getContext()).build()
+    }
     private val handler = Handler(Looper.getMainLooper())
-    private val database = AppDatabase.getDatabase(context)
+    private val database by lazy { AppDatabase.getDatabase(getContext()) }
 
     private val messages = mutableListOf<ChatMessage>()
     private var currentStreamingText = StringBuilder()
