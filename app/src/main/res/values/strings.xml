@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EasyHomework</string>
+    <string name="floating_ball_description">AI 搜题悬浮球</string>
+    <string name="settings_title">设置</string>
+    <string name="history_title">搜题历史</string>
+    <string name="api_endpoint">API 端点</string>
+    <string name="api_key">API 密钥</string>
+    <string name="model_name">模型名称</string>
+    <string name="system_prompt">系统提示词</string>
+    <string name="save_settings">保存设置</string>
+    <string name="enable_floating_ball">开启悬浮球</string>
+    <string name="analyzing_image">正在分析图片…</string>
+    <string name="recognizing_text">正在识别文字…</string>
+    <string name="thinking">思考中…</string>
+    <string name="confirm">确认</string>
+    <string name="cancel">取消</string>
+    <string name="copy_answer">复制答案</string>
+    <string name="regenerate">重新生成</string>
+    <string name="follow_up_hint">追问…</string>
+    <string name="no_api_key">请先在设置中配置 API 密钥</string>
+    <string name="ocr_failed">文字识别失败</string>
+    <string name="no_text_detected">未识别到文字，请重新选择区域</string>
+    <string name="answer_copied">答案已复制</string>
+    <string name="clear_history">清空历史</string>
+    <string name="clear_history_confirm">确定要清空所有搜题记录吗？此操作不可撤销。</string>
+    <string name="no_history">还没有搜题记录</string>
+    <string name="overlay_permission_needed">需要悬浮窗权限才能使用搜题功能</string>
+</resources>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary Colors -->
+    <color name="primary_purple">#FF6C63FF</color>
+    <color name="primary_blue">#FF3F8CFF</color>
+
+    <!-- Dark Theme -->
+    <color name="dark_background">#FF0F0F1A</color>
+    <color name="dark_surface">#FF1A1A2E</color>
+    <color name="dark_surface_variant">#FF252540</color>
+    <color name="dark_card">#FF1E1E32</color>
+
+    <!-- Text -->
+    <color name="text_primary">#FFE8E8F0</color>
+    <color name="text_secondary">#FFA0A0B8</color>
+    <color name="text_tertiary">#FF6B6B80</color>
+
+    <!-- Accents -->
+    <color name="accent_green">#FF4CAF50</color>
+    <color name="accent_red">#FFEF5350</color>
+    <color name="accent_orange">#FFFF9800</color>
+    <color name="accent_cyan">#FF00BCD4</color>
+
+    <!-- Floating Ball -->
+    <color name="floating_ball_start">#FF7C4DFF</color>
+    <color name="floating_ball_end">#FF448AFF</color>
+
+    <!-- Overlay -->
+    <color name="overlay_dark">#CC000000</color>
+    <color name="selection_border">#FF6C63FF</color>
+</resources>

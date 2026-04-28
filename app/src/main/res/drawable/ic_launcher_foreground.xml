@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Background circle -->
+    <path
+        android:fillColor="#1A1A2E"
+        android:pathData="M54,54m-54,0a54,54 0,1 1,108 0a54,54 0,1 1,-108 0" />
+    <!-- Gradient circle -->
+    <path
+        android:fillColor="#6C63FF"
+        android:pathData="M54,54m-36,0a36,36 0,1 1,72 0a36,36 0,1 1,-72 0" />
+    <!-- AI text -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,62L46,42L50,42L56,62L52,62L51,58L45,58L44,62ZM46,55L50,55L48,47ZM60,62L60,42L64,42L64,62Z" />
+</vector>
