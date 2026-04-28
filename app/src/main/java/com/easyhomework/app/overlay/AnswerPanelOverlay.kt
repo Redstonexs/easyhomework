@@ -333,6 +333,10 @@ class AnswerPanelOverlay(
         sendToLLM(loadingView)
     }
 
+    private var currentThinkingText = StringBuilder()
+    private var thinkingView: TextView? = null
+    private var isThinkingPhase = false
+
     private fun sendToLLM(loadingView: TextView) {
         val config = preferencesManager.getLLMConfig()
 
@@ -342,6 +346,9 @@ class AnswerPanelOverlay(
         }
 
         currentStreamingText.clear()
+        currentThinkingText.clear()
+        isThinkingPhase = false
+        thinkingView = null
 
         scope.launch {
             if (config.stream) {
@@ -350,7 +357,35 @@ class AnswerPanelOverlay(
                         is LLMRepository.StreamEvent.Started -> {
                             updateBubbleText(loadingView, "思考中...", isLoading = true)
                         }
+                        is LLMRepository.StreamEvent.Thinking -> {
+                            if (!isThinkingPhase) {
+                                isThinkingPhase = true
+                                // Show thinking label on the loading bubble
+                                updateBubbleText(loadingView, "💭 正在深度思考...", isLoading = true)
+                                // Add a thinking bubble
+                                thinkingView = addThinkingBubble()
+                            }
+                            currentThinkingText.append(event.text)
+                            thinkingView?.let { tv ->
+                                handler.post {
+                                    tv.text = currentThinkingText.toString()
+                                }
+                            }
+                            scrollToBottom()
+                        }
                         is LLMRepository.StreamEvent.Token -> {
+                            if (isThinkingPhase) {
+                                // Transition from thinking to answering
+                                isThinkingPhase = false
+                                // Collapse thinking text
+                                thinkingView?.let { tv ->
+                                    handler.post {
+                                        tv.maxLines = 3
+                                        tv.ellipsize = android.text.TextUtils.TruncateAt.END
+                                    }
+                                }
+                                updateBubbleText(loadingView, "", isLoading = true)
+                            }
                             currentStreamingText.append(event.text)
                             updateBubbleText(
                                 loadingView,
@@ -390,6 +425,41 @@ class AnswerPanelOverlay(
                 )
             }
         }
+    }
+
+    private fun addThinkingBubble(): TextView {
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.START
+            setPadding(0, dp(2f).toInt(), dp(40f).toInt(), dp(4f).toInt())
+        }
+
+        val label = TextView(context).apply {
+            this.text = "💭 思考过程"
+            setTextColor(Color.parseColor("#8888AA"))
+            textSize = 10f
+            setPadding(dp(4f).toInt(), 0, 0, dp(2f).toInt())
+        }
+        container.addView(label)
+
+        val bubble = TextView(context).apply {
+            setTextColor(Color.parseColor("#7777AA"))
+            textSize = 12f
+            setTypeface(null, Typeface.ITALIC)
+            val bg = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#1A6C63FF"))
+                cornerRadius = dp(12f)
+            }
+            background = bg
+            setPadding(dp(12f).toInt(), dp(8f).toInt(), dp(12f).toInt(), dp(8f).toInt())
+            setLineSpacing(dp(2f), 1f)
+        }
+
+        container.addView(bubble)
+        messagesContainer.addView(container)
+        scrollToBottom()
+
+        return bubble
     }
 
     // ---- Bubble Views ----

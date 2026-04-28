@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.LLMConfig
 
 /**
@@ -30,6 +31,7 @@ class PreferencesManager(context: Context) {
 
     fun saveLLMConfig(config: LLMConfig) {
         prefs.edit().apply {
+            putString(KEY_API_TYPE, config.apiType.name)
             putString(KEY_API_ENDPOINT, config.apiEndpoint)
             putString(KEY_API_PATH, config.apiPath)
             putString(KEY_MODEL_NAME, config.modelName)
@@ -37,22 +39,29 @@ class PreferencesManager(context: Context) {
             putFloat(KEY_TEMPERATURE, config.temperature)
             putInt(KEY_MAX_TOKENS, config.maxTokens)
             putBoolean(KEY_STREAM, config.stream)
+            putBoolean(KEY_THINKING_ENABLED, config.thinkingEnabled)
+            putInt(KEY_THINKING_BUDGET, config.thinkingBudget)
+            putBoolean(KEY_MINI_BALL, config.miniBall)
             apply()
         }
-        // API key stored in encrypted preferences
         encryptedPrefs.edit().putString(KEY_API_KEY, config.apiKey).apply()
     }
 
     fun getLLMConfig(): LLMConfig {
+        val defaults = LLMConfig()
         return LLMConfig(
-            apiEndpoint = prefs.getString(KEY_API_ENDPOINT, LLMConfig().apiEndpoint) ?: LLMConfig().apiEndpoint,
-            apiPath = prefs.getString(KEY_API_PATH, LLMConfig().apiPath) ?: LLMConfig().apiPath,
+            apiType = ApiType.fromString(prefs.getString(KEY_API_TYPE, defaults.apiType.name) ?: defaults.apiType.name),
+            apiEndpoint = prefs.getString(KEY_API_ENDPOINT, defaults.apiEndpoint) ?: defaults.apiEndpoint,
+            apiPath = prefs.getString(KEY_API_PATH, defaults.apiPath) ?: defaults.apiPath,
             apiKey = encryptedPrefs.getString(KEY_API_KEY, "") ?: "",
-            modelName = prefs.getString(KEY_MODEL_NAME, LLMConfig().modelName) ?: LLMConfig().modelName,
-            systemPrompt = prefs.getString(KEY_SYSTEM_PROMPT, LLMConfig().systemPrompt) ?: LLMConfig().systemPrompt,
-            temperature = prefs.getFloat(KEY_TEMPERATURE, LLMConfig().temperature),
-            maxTokens = prefs.getInt(KEY_MAX_TOKENS, LLMConfig().maxTokens),
-            stream = prefs.getBoolean(KEY_STREAM, LLMConfig().stream)
+            modelName = prefs.getString(KEY_MODEL_NAME, defaults.modelName) ?: defaults.modelName,
+            systemPrompt = prefs.getString(KEY_SYSTEM_PROMPT, defaults.systemPrompt) ?: defaults.systemPrompt,
+            temperature = prefs.getFloat(KEY_TEMPERATURE, defaults.temperature),
+            maxTokens = prefs.getInt(KEY_MAX_TOKENS, defaults.maxTokens),
+            stream = prefs.getBoolean(KEY_STREAM, defaults.stream),
+            thinkingEnabled = prefs.getBoolean(KEY_THINKING_ENABLED, defaults.thinkingEnabled),
+            thinkingBudget = prefs.getInt(KEY_THINKING_BUDGET, defaults.thinkingBudget),
+            miniBall = prefs.getBoolean(KEY_MINI_BALL, defaults.miniBall)
         )
     }
 
@@ -71,6 +80,7 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putInt(KEY_BALL_Y, value).apply()
 
     companion object {
+        private const val KEY_API_TYPE = "api_type"
         private const val KEY_API_ENDPOINT = "api_endpoint"
         private const val KEY_API_PATH = "api_path"
         private const val KEY_API_KEY = "api_key"
@@ -79,6 +89,9 @@ class PreferencesManager(context: Context) {
         private const val KEY_TEMPERATURE = "temperature"
         private const val KEY_MAX_TOKENS = "max_tokens"
         private const val KEY_STREAM = "stream"
+        private const val KEY_THINKING_ENABLED = "thinking_enabled"
+        private const val KEY_THINKING_BUDGET = "thinking_budget"
+        private const val KEY_MINI_BALL = "mini_ball"
         private const val KEY_FLOATING_BALL_ENABLED = "floating_ball_enabled"
         private const val KEY_BALL_X = "ball_x"
         private const val KEY_BALL_Y = "ball_y"

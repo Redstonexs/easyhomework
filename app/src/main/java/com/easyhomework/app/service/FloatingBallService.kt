@@ -8,14 +8,16 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
-import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.OvershootInterpolator
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.easyhomework.app.EasyHomeworkApp
 import com.easyhomework.app.MainActivity
@@ -30,9 +32,10 @@ import kotlin.math.abs
 /**
  * Foreground service that manages the floating ball overlay.
  * Handles:
- * - Adding/removing the floating ball view
+ * - Adding/removing the floating ball view (normal + mini mode)
  * - Drag gestures and edge snapping
  * - Click detection to trigger screenshot flow
+ * - Long press to close the service
  * - Communication with ScreenCaptureService
  */
 class FloatingBallService : Service() {
@@ -44,6 +47,7 @@ class FloatingBallService : Service() {
     private var answerPanel: AnswerPanelOverlay? = null
 
     private var ballParams: WindowManager.LayoutParams? = null
+    private val handler = Handler(Looper.getMainLooper())
 
     // Drag tracking
     private var initialX = 0
@@ -52,12 +56,23 @@ class FloatingBallService : Service() {
     private var initialTouchY = 0f
     private var isDragging = false
 
+    // Long press tracking
+    private var longPressTriggered = false
+    private val longPressRunnable = Runnable {
+        if (!isDragging) {
+            longPressTriggered = true
+            onLongPress()
+        }
+    }
+
     companion object {
         const val ACTION_SCREENSHOT_RESULT = "com.easyhomework.SCREENSHOT_RESULT"
         const val EXTRA_SCREENSHOT_PATH = "screenshot_path"
 
         private const val CLICK_THRESHOLD = 10
-        private const val BALL_SIZE = 160 // dp will be calculated
+        private const val BALL_SIZE_NORMAL = 112  // Reduced from 160
+        private const val BALL_SIZE_MINI = 52
+        private const val LONG_PRESS_DURATION = 800L
 
         private var instance: FloatingBallService? = null
 
@@ -89,8 +104,6 @@ class FloatingBallService : Service() {
         intent?.let {
             when (it.action) {
                 ACTION_SCREENSHOT_RESULT -> {
-                    // Screenshot captured, show it
-                    // The bitmap will be passed via the ScreenCaptureService singleton
                     val bitmap = ScreenCaptureService.getLastScreenshot()
                     if (bitmap != null) {
                         showRegionSelector(bitmap)
@@ -103,6 +116,7 @@ class FloatingBallService : Service() {
 
     override fun onDestroy() {
         instance = null
+        handler.removeCallbacks(longPressRunnable)
         removeFloatingBall()
         removeRegionSelector()
         removeAnswerPanel()
@@ -116,7 +130,9 @@ class FloatingBallService : Service() {
     private fun showFloatingBall() {
         if (floatingBallView != null) return
 
-        val ballSizePx = (BALL_SIZE * resources.displayMetrics.density).toInt()
+        val isMini = preferencesManager.getLLMConfig().miniBall
+        val ballSize = if (isMini) BALL_SIZE_MINI else BALL_SIZE_NORMAL
+        val ballSizePx = (ballSize * resources.displayMetrics.density).toInt()
 
         ballParams = WindowManager.LayoutParams(
             ballSizePx,
@@ -133,6 +149,7 @@ class FloatingBallService : Service() {
         }
 
         floatingBallView = FloatingBallView(this).apply {
+            isMiniMode = isMini
             setOnTouchListener { v, event ->
                 handleBallTouch(v, event)
                 true
@@ -163,6 +180,14 @@ class FloatingBallService : Service() {
         floatingBallView = null
     }
 
+    /**
+     * Recreate the floating ball (e.g. after settings change between normal/mini).
+     */
+    fun recreateFloatingBall() {
+        removeFloatingBall()
+        showFloatingBall()
+    }
+
     fun hideFloatingBall() {
         floatingBallView?.visibility = View.GONE
     }
@@ -181,6 +206,10 @@ class FloatingBallService : Service() {
                 initialTouchX = event.rawX
                 initialTouchY = event.rawY
                 isDragging = false
+                longPressTriggered = false
+
+                // Start long press timer
+                handler.postDelayed(longPressRunnable, LONG_PRESS_DURATION)
 
                 // Press feedback
                 view.animate().scaleX(0.9f).scaleY(0.9f).setDuration(100).start()
@@ -192,6 +221,8 @@ class FloatingBallService : Service() {
 
                 if (abs(dx) > CLICK_THRESHOLD || abs(dy) > CLICK_THRESHOLD) {
                     isDragging = true
+                    // Cancel long press if dragging
+                    handler.removeCallbacks(longPressRunnable)
                 }
 
                 if (isDragging) {
@@ -204,8 +235,15 @@ class FloatingBallService : Service() {
             }
 
             MotionEvent.ACTION_UP -> {
+                handler.removeCallbacks(longPressRunnable)
+
                 // Release feedback
                 view.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
+
+                if (longPressTriggered) {
+                    // Already handled by long press
+                    return
+                }
 
                 if (!isDragging) {
                     // Click: trigger screenshot
@@ -215,7 +253,30 @@ class FloatingBallService : Service() {
                     snapToEdge()
                 }
             }
+
+            MotionEvent.ACTION_CANCEL -> {
+                handler.removeCallbacks(longPressRunnable)
+                view.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
+            }
         }
+    }
+
+    /**
+     * Long press handler — closes the floating ball service.
+     */
+    private fun onLongPress() {
+        // Haptic feedback
+        floatingBallView?.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+
+        // Shrink animation and close
+        floatingBallView?.animate()
+            ?.scaleX(0f)?.scaleY(0f)?.alpha(0f)
+            ?.setDuration(300)
+            ?.withEndAction {
+                Toast.makeText(this, "悬浮球已关闭", Toast.LENGTH_SHORT).show()
+                stopSelf()
+            }
+            ?.start()
     }
 
     private fun snapToEdge() {
@@ -224,12 +285,11 @@ class FloatingBallService : Service() {
         val ballWidth = params.width
 
         val targetX = if (params.x + ballWidth / 2 < screenWidth / 2) {
-            8 // Snap to left
+            8
         } else {
-            screenWidth - ballWidth - 8 // Snap to right
+            screenWidth - ballWidth - 8
         }
 
-        // Animate to edge
         val startX = params.x
         floatingBallView?.animate()
             ?.setDuration(250)
@@ -243,7 +303,6 @@ class FloatingBallService : Service() {
             }
             ?.start()
 
-        // Save position
         preferencesManager.floatingBallX = targetX
         preferencesManager.floatingBallY = params.y
     }
@@ -251,7 +310,6 @@ class FloatingBallService : Service() {
     // ---- Screenshot Flow ----
 
     private fun onFloatingBallClicked() {
-        // Click animation
         floatingBallView?.let { ball ->
             ball.animate()
                 .scaleX(0.8f).scaleY(0.8f)
@@ -265,16 +323,12 @@ class FloatingBallService : Service() {
                 .start()
         }
 
-        // Check if ScreenCaptureService is running and has projection
         if (ScreenCaptureService.isProjectionReady()) {
-            // Hide ball and capture
             hideFloatingBall()
-            // Small delay to ensure ball is hidden before capture
             floatingBallView?.postDelayed({
                 ScreenCaptureService.requestCapture()
             }, 250)
         } else {
-            // Need to request MediaProjection permission
             val intent = Intent(this, ScreenCapturePermissionActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
@@ -367,7 +421,7 @@ class FloatingBallService : Service() {
 
         return NotificationCompat.Builder(this, EasyHomeworkApp.CHANNEL_FLOATING_BALL)
             .setContentTitle("EasyHomework 运行中")
-            .setContentText("点击悬浮球截屏搜题")
+            .setContentText("点击截屏搜题 · 长按关闭")
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
