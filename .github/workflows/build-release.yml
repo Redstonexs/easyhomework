@@ -50,7 +50,7 @@ jobs:
 
       - name: Sign APK
         if: ${{ secrets.KEYSTORE_BASE64 != '' }}
-        uses: r0adkll/sign-android-release@v1
+        uses: r0adkll/sign-android-release@349ebdef58775b1e0d8099458af0816dc79b6407
         id: sign
         with:
           releaseDirectory: app/build/outputs/apk/release
@@ -62,10 +62,10 @@ jobs:
       - name: Locate APK
         id: apk
         run: |
-          if [ -n "${{ steps.sign.outputs.signedReleaseFile }}" ]; then
+          if [ "${{ steps.sign.outcome }}" = "success" ]; then
             echo "path=${{ steps.sign.outputs.signedReleaseFile }}" >> "$GITHUB_OUTPUT"
           else
-            APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n1)
+            APK=$(find app/build/outputs/apk/release -name "app-release*.apk" | head -n1)
             echo "path=$APK" >> "$GITHUB_OUTPUT"
           fi
 
