@@ -53,9 +53,8 @@ jobs:
         run: ./gradlew assembleRelease
         
       - name: Sign APK
-        # 🌟 修复关键：改为判断环境变量
         if: env.HAS_KEYSTORE == 'true'
-        uses: r0adkll/sign-android-release@349ebdef58775b1e0d8099458af0816dc79b6407
+        uses: r0adkll/sign-android-release@v1
         id: sign
         with:
           releaseDirectory: app/build/outputs/apk/release
@@ -63,6 +62,8 @@ jobs:
           alias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
           
       - name: Locate APK
         id: apk
