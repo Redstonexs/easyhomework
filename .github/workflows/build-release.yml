@@ -10,22 +10,26 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
+      
+    # 🌟 修复关键：在这里定义环境变量，判断 Secret 是否存在
+    env:
+      HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
+      
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
+          
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-
+          
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-
+        
       - name: Determine next version
         id: version
         run: |
@@ -41,15 +45,16 @@ jobs:
           fi
           echo "version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$NEXT_VERSION" >> "$GITHUB_OUTPUT"
-
+          
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-
+        
       - name: Build APK
         run: ./gradlew assembleRelease
-
+        
       - name: Sign APK
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        # 🌟 修复关键：改为判断环境变量
+        if: env.HAS_KEYSTORE == 'true'
         uses: r0adkll/sign-android-release@349ebdef58775b1e0d8099458af0816dc79b6407
         id: sign
         with:
@@ -58,7 +63,7 @@ jobs:
           alias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
-
+          
       - name: Locate APK
         id: apk
         run: |
@@ -68,7 +73,7 @@ jobs:
             APK=$(find app/build/outputs/apk/release -name "app-release*.apk" | head -n1)
             echo "path=$APK" >> "$GITHUB_OUTPUT"
           fi
-
+          
       - name: Create pre-release
         uses: softprops/action-gh-release@v2
         with:
