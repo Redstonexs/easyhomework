@@ -379,25 +379,31 @@ class FloatingBallService : Service() {
     fun showAnswerPanel(screenshot: Bitmap, recognizedText: String) {
         removeAnswerPanel()
 
-        answerPanel = AnswerPanelOverlay(this, screenshot, recognizedText).apply {
-            onClose = {
-                removeAnswerPanel()
-                showFloatingBallAgain()
+        try {
+            answerPanel = AnswerPanelOverlay(this, screenshot, recognizedText).apply {
+                onClose = {
+                    removeAnswerPanel()
+                    showFloatingBallAgain()
+                }
             }
-        }
 
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.BOTTOM
-        }
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.BOTTOM
+            }
 
-        windowManager.addView(answerPanel, params)
+            windowManager.addView(answerPanel, params)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            android.widget.Toast.makeText(this, "面板打开失败: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+            showFloatingBallAgain()
+        }
     }
 
     private fun removeAnswerPanel() {

@@ -385,6 +385,7 @@ class RegionSelectorOverlay(
         )
     }
 
+    @SuppressLint("SetTextI18n")
     private fun confirmSelection() {
         scope.launch {
             statusText.text = "正在识别文字..."
@@ -418,7 +419,14 @@ class RegionSelectorOverlay(
                         buttonBar.visibility = View.VISIBLE
                     }, 2000)
                 } else {
-                    onConfirm?.invoke(croppedBitmap, result.text)
+                    // Post callback to handler so it runs outside this scope
+                    // This prevents scope.cancel() in removeRegionSelector from
+                    // killing the callback execution
+                    val bitmap = croppedBitmap
+                    val text = result.text
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        onConfirm?.invoke(bitmap, text)
+                    }
                 }
             } catch (e: Exception) {
                 statusText.text = "识别失败: ${e.message}"
