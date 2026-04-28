@@ -102,6 +102,7 @@ class SmartRegionDetector {
     /**
      * Filter out blocks that are likely UI elements (status bar, navigation, toolbars).
      */
+    @Suppress("UNUSED_PARAMETER")
     private fun filterContentBlocks(
         blocks: List<TextBlockInfo>,
         imageWidth: Int,

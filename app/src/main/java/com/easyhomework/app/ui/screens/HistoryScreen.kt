@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material3.*
@@ -78,7 +79,7 @@ fun HistoryScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
-                            Icons.Filled.ArrowBack,
+                            Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "返回",
                             tint = TextPrimary
                         )
@@ -227,7 +228,7 @@ fun HistoryItem(
             // Expanded content
             if (isExpanded) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Divider(color = DarkSurfaceVariant, thickness = 1.dp)
+                HorizontalDivider(color = DarkSurfaceVariant, thickness = 1.dp)
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Show conversation

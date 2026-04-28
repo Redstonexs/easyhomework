@@ -15,7 +15,9 @@ import android.media.projection.MediaProjectionManager
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.Build
 import android.util.DisplayMetrics
+import android.view.WindowMetrics
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import com.easyhomework.app.EasyHomeworkApp
@@ -82,12 +84,21 @@ class ScreenCaptureService : Service() {
         instance = this
         handler = Handler(Looper.getMainLooper())
 
-        val metrics = DisplayMetrics()
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        wm.defaultDisplay.getRealMetrics(metrics)
-        screenDensity = metrics.densityDpi
-        screenWidth = metrics.widthPixels
-        screenHeight = metrics.heightPixels
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val windowMetrics: WindowMetrics = wm.currentWindowMetrics
+            val bounds = windowMetrics.bounds
+            screenWidth = bounds.width()
+            screenHeight = bounds.height()
+            screenDensity = resources.displayMetrics.densityDpi
+        } else {
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealMetrics(metrics)
+            screenDensity = metrics.densityDpi
+            screenWidth = metrics.widthPixels
+            screenHeight = metrics.heightPixels
+        }
 
         startForeground(EasyHomeworkApp.NOTIFICATION_ID_SCREEN_CAPTURE, createNotification())
     }
@@ -95,7 +106,12 @@ class ScreenCaptureService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         intent?.let {
             val resultCode = it.getIntExtra("resultCode", 0)
-            val resultData: Intent? = it.getParcelableExtra("resultData")
+            val resultData: Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                it.getParcelableExtra("resultData", Intent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                it.getParcelableExtra("resultData")
+            }
 
             if (resultCode != 0 && resultData != null && mediaProjection == null) {
                 val projectionManager = getSystemService(

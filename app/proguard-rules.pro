@@ -31,3 +31,4 @@
 
 # Markwon
 -keep class io.noties.markwon.** { *; }
+-dontwarn org.commonmark.**
