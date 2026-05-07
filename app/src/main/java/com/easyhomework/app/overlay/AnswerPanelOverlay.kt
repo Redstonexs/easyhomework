@@ -14,8 +14,6 @@ import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.*
-import android.view.ContextThemeWrapper
-import com.easyhomework.app.R
 import com.easyhomework.app.data.AppDatabase
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.QueryHistory
@@ -37,47 +35,33 @@ import kotlinx.coroutines.flow.collect
  */
 @SuppressLint("ViewConstructor")
 class AnswerPanelOverlay(
-    context: Context,
+    private val serviceContext: Context,
     private val screenshotBitmap: Bitmap,
     private val recognizedText: String
-) : FrameLayout(wrapContextIfNeeded(context)) {
-
-    companion object {
-        /**
-         * Wrap the context with a ContextThemeWrapper if it's not an Activity.
-         * This ensures Views and Markwon can resolve theme attributes properly
-         * when created from a Service context (e.g., FloatingBallService).
-         */
-        private fun wrapContextIfNeeded(context: Context): Context {
-            return try {
-                if (context is android.app.Activity) {
-                    context
-                } else {
-                    ContextThemeWrapper(context, R.style.Theme_EasyHomework)
-                }
-            } catch (e: Exception) {
-                context
-            }
-        }
-    }
+) : FrameLayout(serviceContext) {
 
     var onClose: (() -> Unit)? = null
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val llmRepository = LLMRepository()
-    private val preferencesManager = PreferencesManager(getContext())
+    private val preferencesManager = PreferencesManager(serviceContext)
     private val markwon: Markwon = try {
-        Markwon.create(getContext())
+        Markwon.create(serviceContext)
     } catch (e: Exception) {
-        // Fallback: build a minimal Markwon without theme-dependent plugins
-        Markwon.builder(getContext()).build()
+        try {
+            Markwon.builder(serviceContext).build()
+        } catch (e2: Exception) {
+            // Last resort: create a no-op Markwon
+            Markwon.builder(serviceContext).build()
+        }
     }
     private val handler = Handler(Looper.getMainLooper())
-    private val database by lazy { AppDatabase.getDatabase(getContext()) }
+    private val database by lazy { AppDatabase.getDatabase(serviceContext) }
 
     private val messages = mutableListOf<ChatMessage>()
     private var currentStreamingText = StringBuilder()
     private var historyId: Long = -1
+    private var conversationStarted = false
 
     // Views
     private lateinit var panelContainer: LinearLayout
@@ -96,12 +80,19 @@ class AnswerPanelOverlay(
     private val secondaryTextColor = Color.parseColor("#A0A0B8")
     private val accentColor = Color.parseColor("#6C63FF")
 
-    private val density = context.resources.displayMetrics.density
+    private val density = serviceContext.resources.displayMetrics.density
 
     init {
         buildUI()
         animateIn()
-        startConversation()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (!conversationStarted) {
+            conversationStarted = true
+            handler.post { startConversation() }
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
