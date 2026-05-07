@@ -70,8 +70,8 @@ class FloatingBallService : Service() {
         const val EXTRA_SCREENSHOT_PATH = "screenshot_path"
 
         private const val CLICK_THRESHOLD = 10
-        private const val BALL_SIZE_NORMAL = 112  // Reduced from 160
-        private const val BALL_SIZE_MINI = 52
+        private const val BALL_SIZE_NORMAL = 52
+        private const val BALL_SIZE_MINI = 28
         private const val LONG_PRESS_DURATION = 800L
 
         private var instance: FloatingBallService? = null

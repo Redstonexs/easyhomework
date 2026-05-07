@@ -70,34 +70,43 @@ class FloatingBallView @JvmOverloads constructor(
 
         val cx = width / 2f
         val cy = height / 2f
-        val radius = min(width, height) / 2f - if (isMiniMode) 4f else 16f
-        val alpha = if (isMiniMode) 160 else 255 // Semi-transparent in mini mode
+        val radius = min(width, height) / 2f - if (isMiniMode) 2f else 4f
 
-        if (!isMiniMode) {
-            // Draw glow (only in normal mode)
+        if (isMiniMode) {
+            // Mini mode: very small, no color, high transparency
+            val miniAlpha = 100
+            val miniPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                alpha = miniAlpha
+                style = Paint.Style.FILL
+            }
+            canvas.drawCircle(cx, cy, radius, miniPaint)
+        } else {
+            // Normal mode: gradient background (same look as old mini mode)
+            val alpha = 220
+
+            // Draw subtle glow
             canvas.save()
             canvas.scale(breathingScale, breathingScale, cx, cy)
             glowPaint.shader = RadialGradient(
-                cx, cy, radius + 15f,
+                cx, cy, radius + 8f,
                 glowColor, Color.TRANSPARENT,
                 Shader.TileMode.CLAMP
             )
-            canvas.drawCircle(cx, cy, radius + 10f, glowPaint)
+            canvas.drawCircle(cx, cy, radius + 5f, glowPaint)
             canvas.restore()
-        }
 
-        // Draw gradient background circle
-        backgroundPaint.shader = LinearGradient(
-            cx - radius, cy - radius,
-            cx + radius, cy + radius,
-            gradientColors, null,
-            Shader.TileMode.CLAMP
-        )
-        backgroundPaint.alpha = alpha
-        canvas.drawCircle(cx, cy, radius, backgroundPaint)
+            // Draw gradient background circle
+            backgroundPaint.shader = LinearGradient(
+                cx - radius, cy - radius,
+                cx + radius, cy + radius,
+                gradientColors, null,
+                Shader.TileMode.CLAMP
+            )
+            backgroundPaint.alpha = alpha
+            canvas.drawCircle(cx, cy, radius, backgroundPaint)
 
-        if (isMiniMode) {
-            // Mini mode: just a small dot with subtle icon
+            // Small dot icon
             val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
                 this.alpha = alpha
@@ -106,35 +115,6 @@ class FloatingBallView @JvmOverloads constructor(
                 textAlign = Paint.Align.CENTER
             }
             canvas.drawText("✦", cx, cy + radius * 0.3f, dotPaint)
-        } else {
-            // Normal mode: search + AI icon
-            iconPaint.strokeWidth = radius * 0.08f
-            iconPaint.alpha = alpha
-
-            val iconSize = radius * 0.45f
-            val iconCx = cx - iconSize * 0.1f
-            val iconCy = cy - iconSize * 0.1f
-
-            // Glass circle
-            canvas.drawCircle(iconCx, iconCy, iconSize * 0.55f, iconPaint)
-
-            // Handle
-            val handleStartX = iconCx + iconSize * 0.4f
-            val handleStartY = iconCy + iconSize * 0.4f
-            val handleEndX = iconCx + iconSize * 0.85f
-            val handleEndY = iconCy + iconSize * 0.85f
-            iconPaint.strokeWidth = radius * 0.1f
-            canvas.drawLine(handleStartX, handleStartY, handleEndX, handleEndY, iconPaint)
-
-            // "AI" text
-            val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.WHITE
-                this.alpha = alpha
-                textSize = iconSize * 0.4f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.CENTER
-            }
-            canvas.drawText("AI", iconCx, iconCy + iconSize * 0.15f, textPaint)
         }
     }
 
