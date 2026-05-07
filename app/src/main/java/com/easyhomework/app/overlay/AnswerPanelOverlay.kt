@@ -127,9 +127,11 @@ class AnswerPanelOverlay(
             clipToOutline = true
         }
 
+        val screenHeight = context.resources.displayMetrics.heightPixels
+        val panelHeight = (screenHeight * 0.65f).toInt()
         val panelParams = LayoutParams(
             LayoutParams.MATCH_PARENT,
-            (context.resources.displayMetrics.heightPixels * 0.65f).toInt()
+            panelHeight
         ).apply {
             gravity = Gravity.BOTTOM
         }
@@ -664,12 +666,16 @@ class AnswerPanelOverlay(
     // ---- Animation ----
 
     private fun animateIn() {
-        panelContainer.translationY = context.resources.displayMetrics.heightPixels.toFloat()
-        panelContainer.animate()
-            .translationY(0f)
-            .setDuration(400)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
+        // Use post to ensure layout is measured correctly on all devices
+        panelContainer.post {
+            val parentHeight = getContainerHeight()
+            panelContainer.translationY = parentHeight.toFloat()
+            panelContainer.animate()
+                .translationY(0f)
+                .setDuration(400)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+        }
 
         // Fade in backdrop
         alpha = 0f
@@ -677,8 +683,9 @@ class AnswerPanelOverlay(
     }
 
     private fun animateOut() {
+        val parentHeight = getContainerHeight()
         panelContainer.animate()
-            .translationY(panelContainer.height.toFloat())
+            .translationY(parentHeight.toFloat())
             .setDuration(300)
             .setInterpolator(DecelerateInterpolator())
             .withEndAction {
@@ -687,6 +694,23 @@ class AnswerPanelOverlay(
             .start()
 
         animate().alpha(0f).setDuration(250).start()
+    }
+
+    /**
+     * Get the container height for animation, with fallback for different device behaviors.
+     */
+    private fun getContainerHeight(): Int {
+        // Try parent view first (WindowManager's DecorView)
+        val parentView = parent as? View
+        if (parentView != null && parentView.height > 0) {
+            return parentView.height
+        }
+        // Fallback to this view's height
+        if (height > 0) {
+            return height
+        }
+        // Last resort: use screen height
+        return context.resources.displayMetrics.heightPixels
     }
 
     private fun dp(value: Float): Float = value * density
