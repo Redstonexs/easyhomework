@@ -469,15 +469,12 @@ class AnswerPanelOverlay(
         // Add tool call to messages
         messages.add(ChatMessage.assistantWithToolCalls(null, listOf(toolCall)))
 
-        // Show tool execution status
-        val toolName = when (toolCall.name) {
-            "get_current_datetime" -> "获取日期时间"
-            "calculate" -> "计算数学表达式"
-            "evaluate_js" -> "执行 JavaScript"
-            "convert_unit" -> "单位转换"
-            else -> toolCall.name
-        }
-        addToolBubble("🔧 正在调用工具: $toolName")
+        // Parse arguments for display
+        val argsDisplay = parseToolCallArgs(toolCall)
+        val toolName = getToolDisplayName(toolCall.name)
+
+        // Show tool call with arguments
+        addToolCallBubble(toolName, argsDisplay)
 
         // Execute tool
         val result = toolExecutor.execute(toolCall)
@@ -486,11 +483,7 @@ class AnswerPanelOverlay(
         messages.add(ChatMessage.toolResult(toolCall.id, result.content))
 
         // Show tool result
-        if (result.isError) {
-            addToolBubble("⚠️ 工具执行失败: ${result.content}")
-        } else {
-            addToolBubble("✅ 工具结果: ${result.content}")
-        }
+        addToolResultBubble(result.content, result.isError)
 
         // Continue conversation with tool result
         val newLoadingView = addAssistantBubble("", isLoading = true)
@@ -502,24 +495,18 @@ class AnswerPanelOverlay(
         messages.add(ChatMessage.assistantWithToolCalls(null, toolCalls))
 
         for (toolCall in toolCalls) {
-            val toolName = when (toolCall.name) {
-                "get_current_datetime" -> "获取日期时间"
-                "calculate" -> "计算数学表达式"
-                "evaluate_js" -> "执行 JavaScript"
-                "convert_unit" -> "单位转换"
-                else -> toolCall.name
-            }
-            addToolBubble("🔧 正在调用工具: $toolName")
+            val argsDisplay = parseToolCallArgs(toolCall)
+            val toolName = getToolDisplayName(toolCall.name)
+
+            // Show tool call with arguments
+            addToolCallBubble(toolName, argsDisplay)
 
             val result = toolExecutor.execute(toolCall)
 
             messages.add(ChatMessage.toolResult(toolCall.id, result.content))
 
-            if (result.isError) {
-                addToolBubble("⚠️ 工具执行失败: ${result.content}")
-            } else {
-                addToolBubble("✅ 工具结果: ${result.content}")
-            }
+            // Show tool result
+            addToolResultBubble(result.content, result.isError)
         }
 
         // Continue conversation with tool results
@@ -704,27 +691,125 @@ class AnswerPanelOverlay(
         return bubble
     }
 
-    private fun addToolBubble(text: String) {
+    private fun getToolDisplayName(toolName: String): String {
+        return when (toolName) {
+            "get_current_datetime" -> "🕐 获取日期时间"
+            "calculate" -> "🔢 计算表达式"
+            "evaluate_js" -> "💻 执行计算"
+            "convert_unit" -> "📐 单位转换"
+            else -> "🔧 $toolName"
+        }
+    }
+
+    private fun parseToolCallArgs(toolCall: ToolCall): String {
+        return try {
+            val json = org.json.JSONObject(toolCall.arguments)
+            val sb = StringBuilder()
+            val keys = json.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val value = json.get(key)
+                if (sb.isNotEmpty()) sb.append("\n")
+                val displayKey = when (key) {
+                    "expression" -> "表达式"
+                    "code" -> "代码"
+                    "value" -> "数值"
+                    "from_unit" -> "从"
+                    "to_unit" -> "到"
+                    "timezone" -> "时区"
+                    else -> key
+                }
+                sb.append("$displayKey: $value")
+            }
+            sb.toString()
+        } catch (e: Exception) {
+            toolCall.arguments
+        }
+    }
+
+    private fun addToolCallBubble(toolName: String, args: String) {
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.START
             setPadding(0, dp(2f).toInt(), dp(40f).toInt(), dp(4f).toInt())
         }
 
-        val bubble = TextView(context).apply {
-            this.text = text
+        // Tool call header
+        val header = TextView(context).apply {
+            this.text = "⚙️ 调用工具: $toolName"
             setTextColor(Color.parseColor("#88CC88"))
-            textSize = 12f
+            textSize = 13f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             val bg = GradientDrawable().apply {
-                setColor(toolBubbleColor)
-                cornerRadius = dp(12f)
+                setColor(Color.parseColor("#1A2A4A2A"))
+                cornerRadii = floatArrayOf(dp(12f), dp(12f), 0f, 0f, 0f, 0f, dp(12f), dp(12f))
             }
             background = bg
-            setPadding(dp(12f).toInt(), dp(8f).toInt(), dp(12f).toInt(), dp(8f).toInt())
-            setLineSpacing(dp(2f), 1f)
+            setPadding(dp(14f).toInt(), dp(10f).toInt(), dp(14f).toInt(), dp(6f).toInt())
+        }
+        container.addView(header)
+
+        // Tool call arguments
+        if (args.isNotBlank()) {
+            val argsView = TextView(context).apply {
+                this.text = args
+                setTextColor(Color.parseColor("#AACCBB"))
+                textSize = 12f
+                val bg = GradientDrawable().apply {
+                    setColor(Color.parseColor("#152A4A2A"))
+                    cornerRadii = floatArrayOf(0f, 0f, dp(12f), dp(12f), dp(12f), dp(12f), 0f, 0f)
+                }
+                background = bg
+                setPadding(dp(14f).toInt(), dp(4f).toInt(), dp(14f).toInt(), dp(10f).toInt())
+                setLineSpacing(dp(2f), 1f)
+            }
+            container.addView(argsView)
         }
 
-        container.addView(bubble)
+        messagesContainer.addView(container)
+        scrollToBottom()
+    }
+
+    private fun addToolResultBubble(content: String, isError: Boolean) {
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.START
+            setPadding(0, dp(2f).toInt(), dp(40f).toInt(), dp(4f).toInt())
+        }
+
+        val headerText = if (isError) "⚠️ 工具执行失败" else "✅ 工具返回结果"
+        val headerColor = if (isError) "#CC8888" else "#88CC88"
+        val bgColor = if (isError) "#1A4A2A2A" else "#1A2A4A2A"
+
+        val header = TextView(context).apply {
+            this.text = headerText
+            setTextColor(Color.parseColor(headerColor))
+            textSize = 12f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            val bg = GradientDrawable().apply {
+                setColor(Color.parseColor(bgColor))
+                cornerRadii = floatArrayOf(dp(12f), dp(12f), 0f, 0f, 0f, 0f, dp(12f), dp(12f))
+            }
+            background = bg
+            setPadding(dp(14f).toInt(), dp(10f).toInt(), dp(14f).toInt(), dp(4f).toInt())
+        }
+        container.addView(header)
+
+        val resultBgColor = if (isError) "#154A2A2A" else "#152A4A2A"
+        val resultView = TextView(context).apply {
+            this.text = content
+            setTextColor(if (isError) Color.parseColor("#DDAAAA") else Color.parseColor("#BBDDCC"))
+            textSize = 12f
+            val bg = GradientDrawable().apply {
+                setColor(Color.parseColor(resultBgColor))
+                cornerRadii = floatArrayOf(0f, 0f, dp(12f), dp(12f), dp(12f), dp(12f), 0f, 0f)
+            }
+            background = bg
+            setPadding(dp(14f).toInt(), dp(4f).toInt(), dp(14f).toInt(), dp(10f).toInt())
+            setLineSpacing(dp(2f), 1f)
+        }
+        container.addView(resultView)
+
         messagesContainer.addView(container)
         scrollToBottom()
     }
