@@ -38,6 +38,8 @@ fun SettingsScreen(
     onNavigateToHistory: () -> Unit
 ) {
     val config by viewModel.config.collectAsState()
+    val providerConfigs by viewModel.providerConfigs.collectAsState()
+    val activeProviderId by viewModel.activeProviderId.collectAsState()
     val saveMessage by viewModel.saveMessage.collectAsState()
     val availableModels by viewModel.availableModels.collectAsState()
     val isFetchingModels by viewModel.isFetchingModels.collectAsState()
@@ -45,6 +47,7 @@ fun SettingsScreen(
     var showApiKey by remember { mutableStateOf(false) }
     var expandAdvanced by remember { mutableStateOf(false) }
     var showModelDropdown by remember { mutableStateOf(false) }
+    var showProviderMenu by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -192,6 +195,114 @@ fun SettingsScreen(
                 }
             }
 
+            // ---- Provider Selection ----
+            SectionHeader("AI 提供商")
+
+            SettingsCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    // Provider tabs
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Provider chips (scrollable)
+                        Row(
+                            modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            providerConfigs.forEach { provider ->
+                                val isActive = provider.id == activeProviderId
+                                FilterChip(
+                                    selected = isActive,
+                                    onClick = { viewModel.selectProvider(provider.id) },
+                                    label = {
+                                        Text(
+                                            provider.name.ifBlank { "未命名" },
+                                            maxLines = 1,
+                                            fontSize = 13.sp
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = PrimaryPurple.copy(alpha = 0.3f),
+                                        selectedLabelColor = PrimaryPurple,
+                                        containerColor = DarkSurfaceVariant,
+                                        labelColor = TextSecondary
+                                    )
+                                )
+                            }
+                        }
+
+                        // Add provider button
+                        IconButton(
+                            onClick = { viewModel.addNewProvider() },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Add,
+                                contentDescription = "添加提供商",
+                                tint = PrimaryPurple,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // More options
+                        Box {
+                            IconButton(
+                                onClick = { showProviderMenu = true },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.MoreVert,
+                                    contentDescription = "更多选项",
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showProviderMenu,
+                                onDismissRequest = { showProviderMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("删除当前配置") },
+                                    onClick = {
+                                        viewModel.deleteProvider(activeProviderId)
+                                        showProviderMenu = false
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.Delete, contentDescription = null, tint = Color(0xFFFF5252))
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Provider name
+                    OutlinedTextField(
+                        value = config.name,
+                        onValueChange = { viewModel.updateProviderName(config.id, it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("配置名称", color = TextSecondary) },
+                        leadingIcon = {
+                            @Suppress("DEPRECATION")
+                            Icon(Icons.Outlined.Label, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(20.dp))
+                        },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PrimaryPurple,
+                            unfocusedBorderColor = DarkSurfaceVariant,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            cursorColor = PrimaryPurple,
+                            focusedLabelColor = PrimaryPurple,
+                            unfocusedLabelColor = TextSecondary
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            }
+
             // ---- API Type Selection ----
             SectionHeader("API 配置")
 
@@ -272,7 +383,12 @@ fun SettingsScreen(
                             SettingsTextField(
                                 label = "模型名称",
                                 value = config.modelName,
-                                onValueChange = { viewModel.updateConfig(config.copy(modelName = it)) },
+                                onValueChange = {
+                                    viewModel.updateConfig(config.copy(
+                                        modelName = it,
+                                        supportsVision = LLMConfig.modelSupportsVision(it)
+                                    ))
+                                },
                                 placeholder = if (config.apiType == ApiType.OPENAI) "gpt-4o" else "claude-sonnet-4-20250514",
                                 icon = Icons.Outlined.SmartToy
                             )
@@ -306,13 +422,78 @@ fun SettingsScreen(
                                 }
                             }
 
-                            // Model dropdown
+                            // Model dropdown with vision model indicators
                             DropdownMenu(
                                 expanded = showModelDropdown && availableModels.isNotEmpty(),
                                 onDismissRequest = { showModelDropdown = false },
-                                modifier = Modifier.heightIn(max = 300.dp)
+                                modifier = Modifier.heightIn(max = 400.dp).widthIn(min = 280.dp)
                             ) {
-                                availableModels.forEach { model ->
+                                // Vision models section header
+                                val visionModels = availableModels.filter { LLMConfig.modelSupportsVision(it) }
+                                val otherModels = availableModels.filter { !LLMConfig.modelSupportsVision(it) }
+
+                                if (visionModels.isNotEmpty()) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                "📸 支持图像输入",
+                                                color = AccentCyan,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        },
+                                        onClick = {},
+                                        enabled = false
+                                    )
+                                    visionModels.forEach { model ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        model,
+                                                        color = if (model == config.modelName) PrimaryPurple else TextPrimary,
+                                                        fontSize = 14.sp
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        "👁️",
+                                                        fontSize = 10.sp
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                viewModel.selectModel(model)
+                                                showModelDropdown = false
+                                            },
+                                            trailingIcon = {
+                                                if (model == config.modelName) {
+                                                    Icon(Icons.Filled.Check, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(16.dp))
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+
+                                if (otherModels.isNotEmpty() && visionModels.isNotEmpty()) {
+                                    HorizontalDivider(
+                                        color = DarkSurfaceVariant,
+                                        modifier = Modifier.padding(vertical = 4.dp)
+                                    )
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                "其他模型",
+                                                color = TextTertiary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        },
+                                        onClick = {},
+                                        enabled = false
+                                    )
+                                }
+
+                                otherModels.forEach { model ->
                                     DropdownMenuItem(
                                         text = {
                                             Text(
@@ -333,6 +514,26 @@ fun SettingsScreen(
                                     )
                                 }
                             }
+                        }
+                    }
+
+                    // Vision model indicator
+                    if (config.supportsVision || LLMConfig.modelSupportsVision(config.modelName)) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(AccentCyan.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("👁️", fontSize = 16.sp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "该模型支持图像输入，截屏后可直接发送图片",
+                                fontSize = 12.sp,
+                                color = AccentCyan
+                            )
                         }
                     }
                 }
@@ -444,6 +645,30 @@ fun SettingsScreen(
 
                             Spacer(modifier = Modifier.height(16.dp))
 
+                            // Vision model toggle
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("支持图像输入", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
+                                    Text(
+                                        "截屏后可直接发送图片给模型",
+                                        style = MaterialTheme.typography.bodySmall, color = TextTertiary
+                                    )
+                                }
+                                Switch(
+                                    checked = config.supportsVision,
+                                    onCheckedChange = { viewModel.updateConfig(config.copy(supportsVision = it)) },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White, checkedTrackColor = AccentCyan,
+                                        uncheckedThumbColor = TextSecondary, uncheckedTrackColor = DarkSurfaceVariant
+                                    )
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
                             // ---- Thinking Mode ----
                             HorizontalDivider(color = DarkSurfaceVariant, thickness = 1.dp)
                             Spacer(modifier = Modifier.height(16.dp))
@@ -453,7 +678,7 @@ fun SettingsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("🧠 思考模式", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
+                                    Text("思考模式", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
                                     Text(
                                         when (config.apiType) {
                                             ApiType.OPENAI -> "支持 o1/o3/DeepSeek-R1 等模型"
@@ -512,7 +737,6 @@ fun SettingsScreen(
                         // handled via snackbar
                     } else {
                         viewModel.saveConfig()
-                        // Recreate ball if service running and mini mode changed
                         FloatingBallService.getInstance()?.recreateFloatingBall()
                     }
                 },

@@ -16,6 +16,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.*
 import com.easyhomework.app.data.AppDatabase
 import com.easyhomework.app.model.ChatMessage
+import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.model.QueryHistory
 import com.easyhomework.app.network.LLMRepository
 import com.easyhomework.app.util.PreferencesManager
@@ -32,12 +33,14 @@ import kotlinx.coroutines.flow.collect
  * - Copy and regenerate functionality
  * - Markdown rendering
  * - Frosted glass background effect
+ * - Vision model support (direct image input)
  */
 @SuppressLint("ViewConstructor")
 class AnswerPanelOverlay(
     private val serviceContext: Context,
     private val screenshotBitmap: Bitmap,
-    private val recognizedText: String
+    private val recognizedText: String,
+    private val sendDirectImage: Boolean = false
 ) : FrameLayout(serviceContext) {
 
     var onClose: (() -> Unit)? = null
@@ -51,7 +54,6 @@ class AnswerPanelOverlay(
         try {
             Markwon.builder(serviceContext).build()
         } catch (e2: Exception) {
-            // Last resort: create a no-op Markwon
             Markwon.builder(serviceContext).build()
         }
     }
@@ -155,7 +157,7 @@ class AnswerPanelOverlay(
 
         // Title
         val titleText = TextView(context).apply {
-            text = "✨ AI 解题助手"
+            text = if (sendDirectImage) "✨ AI 识图助手" else "✨ AI 解题助手"
             setTextColor(textColor)
             textSize = 18f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -260,7 +262,6 @@ class AnswerPanelOverlay(
             setColorFilter(Color.WHITE)
             setOnClickListener { sendFollowUp() }
         }
-        // Draw a simple send arrow
         sendButton.setImageBitmap(createSendIcon())
 
         val sendParams = LinearLayout.LayoutParams(dp(44f).toInt(), dp(44f).toInt()).apply {
@@ -318,10 +319,25 @@ class AnswerPanelOverlay(
     // ---- Conversation Management ----
 
     private fun startConversation() {
-        // Add the question as the first user message
-        val userMessage = ChatMessage.user(recognizedText)
-        messages.add(userMessage)
-        addUserBubble(recognizedText)
+        val config = preferencesManager.getLLMConfig()
+        val isVisionMode = sendDirectImage && (config.supportsVision || LLMConfig.modelSupportsVision(config.modelName))
+
+        if (isVisionMode) {
+            // Vision mode: send image with optional text prompt
+            val promptText = if (recognizedText.isNotBlank()) {
+                recognizedText
+            } else {
+                "请识别并解答图片中的题目，给出详细的解题步骤和最终答案。"
+            }
+            val userMessage = ChatMessage.userWithImage(promptText, screenshotBitmap)
+            messages.add(userMessage)
+            addUserBubbleWithImage(promptText)
+        } else {
+            // OCR mode: send text only
+            val userMessage = ChatMessage.user(recognizedText)
+            messages.add(userMessage)
+            addUserBubble(recognizedText)
+        }
 
         // Show loading
         val loadingView = addAssistantBubble("", isLoading = true)
@@ -379,9 +395,7 @@ class AnswerPanelOverlay(
                         is LLMRepository.StreamEvent.Thinking -> {
                             if (!isThinkingPhase) {
                                 isThinkingPhase = true
-                                // Show thinking label on the loading bubble
                                 updateBubbleText(loadingView, "💭 正在深度思考...", isLoading = true)
-                                // Add a thinking bubble
                                 thinkingView = addThinkingBubble()
                             }
                             currentThinkingText.append(event.text)
@@ -394,9 +408,7 @@ class AnswerPanelOverlay(
                         }
                         is LLMRepository.StreamEvent.Token -> {
                             if (isThinkingPhase) {
-                                // Transition from thinking to answering
                                 isThinkingPhase = false
-                                // Collapse thinking text
                                 thinkingView?.let { tv ->
                                     handler.post {
                                         tv.maxLines = 3
@@ -512,6 +524,73 @@ class AnswerPanelOverlay(
         scrollToBottom()
     }
 
+    private fun addUserBubbleWithImage(text: String) {
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.END
+            setPadding(dp(40f).toInt(), dp(4f).toInt(), 0, dp(8f).toInt())
+        }
+
+        // Image preview bubble
+        val imagePreview = ImageView(context).apply {
+            val maxSize = dp(160f).toInt()
+            val scale = minOf(
+                maxSize.toFloat() / screenshotBitmap.width,
+                maxSize.toFloat() / screenshotBitmap.height,
+                1f
+            )
+            val scaledBitmap = Bitmap.createScaledBitmap(
+                screenshotBitmap,
+                (screenshotBitmap.width * scale).toInt(),
+                (screenshotBitmap.height * scale).toInt(),
+                true
+            )
+            setImageBitmap(scaledBitmap)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            val bg = GradientDrawable().apply {
+                setColor(userBubbleColor)
+                cornerRadii = floatArrayOf(
+                    dp(16f), dp(16f), dp(4f), dp(4f),
+                    dp(16f), dp(16f), dp(16f), dp(16f)
+                )
+            }
+            background = bg
+            setPadding(dp(4f).toInt(), dp(4f).toInt(), dp(4f).toInt(), dp(4f).toInt())
+        }
+
+        val imageParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            bottomMargin = dp(4f).toInt()
+        }
+        container.addView(imagePreview, imageParams)
+
+        // Text bubble (if there's text)
+        if (text.isNotBlank()) {
+            val bubble = TextView(context).apply {
+                this.text = "📸 $text"
+                setTextColor(Color.WHITE)
+                textSize = 14f
+                val bg = GradientDrawable().apply {
+                    setColor(userBubbleColor)
+                    cornerRadii = floatArrayOf(
+                        dp(16f), dp(16f), dp(4f), dp(4f),
+                        dp(16f), dp(16f), dp(16f), dp(16f)
+                    )
+                }
+                background = bg
+                setPadding(dp(14f).toInt(), dp(10f).toInt(), dp(14f).toInt(), dp(10f).toInt())
+                maxLines = 8
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            container.addView(bubble)
+        }
+
+        messagesContainer.addView(container)
+        scrollToBottom()
+    }
+
     private fun addAssistantBubble(text: String, isLoading: Boolean): TextView {
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -546,7 +625,6 @@ class AnswerPanelOverlay(
             if (isLoading) {
                 this.text = if (text.isEmpty()) "●●●" else text
             } else {
-                // Render markdown
                 markwon.setMarkdown(this, text)
             }
 
@@ -563,10 +641,8 @@ class AnswerPanelOverlay(
     private fun updateBubbleText(bubble: TextView, text: String, isLoading: Boolean) {
         handler.post {
             if (isLoading && text.isNotEmpty()) {
-                // During streaming, just show plain text for performance
-                bubble.text = text + " ▎" // Cursor effect
+                bubble.text = text + " ▎"
             } else if (!isLoading && text.isNotEmpty()) {
-                // Final render with markdown
                 if (text.startsWith("❌") || text.startsWith("⚠️")) {
                     bubble.text = text
                 } else {
@@ -596,13 +672,11 @@ class AnswerPanelOverlay(
     }
 
     private fun regenerateAnswer() {
-        // Remove last assistant message
         val lastIdx = messages.indexOfLast { it.role == ChatMessage.ROLE_ASSISTANT }
         if (lastIdx >= 0) {
             messages.removeAt(lastIdx)
         }
 
-        // Remove last assistant bubble from UI
         for (i in messagesContainer.childCount - 1 downTo 0) {
             val child = messagesContainer.getChildAt(i)
             if (child is LinearLayout) {
@@ -617,7 +691,6 @@ class AnswerPanelOverlay(
             }
         }
 
-        // Resend
         val loadingView = addAssistantBubble("", isLoading = true)
         sendToLLM(loadingView)
     }
@@ -625,7 +698,6 @@ class AnswerPanelOverlay(
     private fun saveToHistory() {
         scope.launch(Dispatchers.IO) {
             try {
-                // Save screenshot to internal storage
                 val screenshotFile = java.io.File(
                     context.filesDir,
                     "screenshots/screenshot_${System.currentTimeMillis()}.png"
@@ -642,9 +714,9 @@ class AnswerPanelOverlay(
                 val history = QueryHistory(
                     id = if (historyId > 0) historyId else 0,
                     screenshotPath = screenshotFile.absolutePath,
-                    recognizedText = recognizedText,
+                    recognizedText = if (sendDirectImage) "[图片] $recognizedText" else recognizedText,
                     conversations = messages.toList(),
-                    previewText = preview
+                    previewText = if (sendDirectImage) "📸 $preview" else preview
                 )
 
                 historyId = database.historyDao().insertHistory(history)
@@ -657,7 +729,6 @@ class AnswerPanelOverlay(
     // ---- Animation ----
 
     private fun animateIn() {
-        // Use post to ensure layout is measured correctly on all devices
         panelContainer.post {
             val parentHeight = getContainerHeight()
             panelContainer.translationY = parentHeight.toFloat()
@@ -668,7 +739,6 @@ class AnswerPanelOverlay(
                 .start()
         }
 
-        // Fade in backdrop
         alpha = 0f
         animate().alpha(1f).setDuration(300).start()
     }
@@ -687,20 +757,14 @@ class AnswerPanelOverlay(
         animate().alpha(0f).setDuration(250).start()
     }
 
-    /**
-     * Get the container height for animation, with fallback for different device behaviors.
-     */
     private fun getContainerHeight(): Int {
-        // Try parent view first (WindowManager's DecorView)
         val parentView = parent as? View
         if (parentView != null && parentView.height > 0) {
             return parentView.height
         }
-        // Fallback to this view's height
         if (height > 0) {
             return height
         }
-        // Last resort: use screen height
         return context.resources.displayMetrics.heightPixels
     }
 

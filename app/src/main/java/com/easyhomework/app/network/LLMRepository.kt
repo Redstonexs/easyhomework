@@ -1,5 +1,7 @@
 package com.easyhomework.app.network
 
+import android.graphics.Bitmap
+import android.util.Base64
 import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.LLMConfig
@@ -14,6 +16,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayOutputStream
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.util.concurrent.TimeUnit
@@ -21,6 +24,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Repository for LLM API calls with streaming support.
  * Supports both OpenAI-compatible and Anthropic APIs.
+ * Supports vision models with image input.
  */
 class LLMRepository {
 
@@ -158,7 +162,7 @@ class LLMRepository {
         }
     }
 
-    private fun parseModelsResponse(body: String, apiType: ApiType): List<String> {
+    private fun parseModelsResponse(body: String, @Suppress("UNUSED_PARAMETER") apiType: ApiType): List<String> {
         return try {
             val json = JsonParser.parseString(body).asJsonObject
             val dataArray = json.getAsJsonArray("data") ?: return emptyList()
@@ -209,14 +213,30 @@ class LLMRepository {
         messages: List<ChatMessage>,
         stream: Boolean
     ): String {
-        val apiMessages = mutableListOf<Map<String, String>>()
+        val apiMessages = mutableListOf<Map<String, Any>>()
 
         if (config.systemPrompt.isNotBlank()) {
             apiMessages.add(mapOf("role" to "system", "content" to config.systemPrompt))
         }
 
         messages.filter { it.role != ChatMessage.ROLE_SYSTEM }.forEach { msg ->
-            apiMessages.add(mapOf("role" to msg.role, "content" to msg.content))
+            if (msg.imageBitmap != null && config.supportsVision) {
+                // Multimodal message with image
+                val content = mutableListOf<Map<String, Any>>()
+                content.add(mapOf(
+                    "type" to "image_url",
+                    "image_url" to mapOf(
+                        "url" to "data:image/jpeg;base64,${bitmapToBase64(msg.imageBitmap)}",
+                        "detail" to "high"
+                    )
+                ))
+                if (msg.content.isNotBlank()) {
+                    content.add(mapOf("type" to "text", "text" to msg.content))
+                }
+                apiMessages.add(mapOf("role" to msg.role, "content" to content))
+            } else {
+                apiMessages.add(mapOf("role" to msg.role, "content" to msg.content))
+            }
         }
 
         val body = mutableMapOf<String, Any>(
@@ -242,7 +262,24 @@ class LLMRepository {
         val apiMessages = mutableListOf<Map<String, Any>>()
 
         messages.filter { it.role != ChatMessage.ROLE_SYSTEM }.forEach { msg ->
-            apiMessages.add(mapOf("role" to msg.role, "content" to msg.content))
+            if (msg.imageBitmap != null && config.supportsVision) {
+                // Multimodal message with image for Anthropic
+                val content = mutableListOf<Map<String, Any>>()
+                content.add(mapOf(
+                    "type" to "image",
+                    "source" to mapOf(
+                        "type" to "base64",
+                        "media_type" to "image/jpeg",
+                        "data" to bitmapToBase64(msg.imageBitmap)
+                    )
+                ))
+                if (msg.content.isNotBlank()) {
+                    content.add(mapOf("type" to "text", "text" to msg.content))
+                }
+                apiMessages.add(mapOf("role" to msg.role, "content" to content))
+            } else {
+                apiMessages.add(mapOf("role" to msg.role, "content" to msg.content))
+            }
         }
 
         val body = mutableMapOf<String, Any>(
@@ -271,6 +308,32 @@ class LLMRepository {
         }
 
         return gson.toJson(body)
+    }
+
+    private fun bitmapToBase64(bitmap: Bitmap): String {
+        val outputStream = ByteArrayOutputStream()
+        // Scale down large images to reduce payload size
+        val maxSize = 1024
+        val scale = if (bitmap.width > maxSize || bitmap.height > maxSize) {
+            minOf(maxSize.toFloat() / bitmap.width, maxSize.toFloat() / bitmap.height)
+        } else {
+            1f
+        }
+        val scaledBitmap = if (scale < 1f) {
+            Bitmap.createScaledBitmap(
+                bitmap,
+                (bitmap.width * scale).toInt(),
+                (bitmap.height * scale).toInt(),
+                true
+            )
+        } else {
+            bitmap
+        }
+        scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
+        if (scaledBitmap !== bitmap) {
+            scaledBitmap.recycle()
+        }
+        return Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
     }
 
     sealed class StreamEvent {

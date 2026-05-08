@@ -11,8 +11,10 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.view.Gravity
 import android.view.ViewGroup
+import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.ocr.SmartRegionDetector
 import com.easyhomework.app.ocr.TextRecognitionManager
+import com.easyhomework.app.util.PreferencesManager
 import kotlinx.coroutines.*
 import kotlin.math.max
 import kotlin.math.min
@@ -25,6 +27,7 @@ import kotlin.math.min
  * - Full region drag for repositioning
  * - Dark overlay outside selection
  * - Confirm/cancel buttons
+ * - Direct image send for vision models (skip OCR)
  */
 @SuppressLint("ViewConstructor")
 class RegionSelectorOverlay(
@@ -32,7 +35,12 @@ class RegionSelectorOverlay(
     private val screenshot: Bitmap
 ) : FrameLayout(context) {
 
-    var onConfirm: ((Bitmap, String) -> Unit)? = null
+    /**
+     * @param croppedBitmap The cropped region bitmap
+     * @param recognizedText OCR text (empty if sendDirectImage is true)
+     * @param sendDirectImage If true, send image directly to vision model without OCR
+     */
+    var onConfirm: ((Bitmap, String, Boolean) -> Unit)? = null
     var onCancel: (() -> Unit)? = null
 
     // Selection rectangle (in bitmap coordinates)
@@ -75,6 +83,7 @@ class RegionSelectorOverlay(
     }
 
     private val smartDetector = SmartRegionDetector()
+    private val preferencesManager = PreferencesManager(context)
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var isLoading = true
 
@@ -123,15 +132,29 @@ class RegionSelectorOverlay(
             onCancel?.invoke()
         }
 
-        // Confirm button
-        val confirmBtn = createButton("✓ 确认选区", "#6C63FF") {
-            confirmSelection()
+        // Direct image button (for vision models)
+        val config = preferencesManager.getLLMConfig()
+        val isVisionModel = config.supportsVision || LLMConfig.modelSupportsVision(config.modelName)
+
+        val directImageBtn = if (isVisionModel) {
+            createButton("📸 直接识图", "#FF9800") {
+                confirmSelection(sendDirectImage = true)
+            }
+        } else null
+
+        // Confirm OCR button
+        val confirmBtn = createButton("✓ OCR 识字", "#6C63FF") {
+            confirmSelection(sendDirectImage = false)
         }
 
         buttonBar.addView(cancelBtn)
-        // Spacer
         val spacer = View(context)
-        buttonBar.addView(spacer, LinearLayout.LayoutParams(48, 1))
+        buttonBar.addView(spacer, LinearLayout.LayoutParams(24, 1))
+        if (directImageBtn != null) {
+            buttonBar.addView(directImageBtn)
+            val spacer2 = View(context)
+            buttonBar.addView(spacer2, LinearLayout.LayoutParams(24, 1))
+        }
         buttonBar.addView(confirmBtn)
 
         val buttonParams = LayoutParams(
@@ -179,9 +202,9 @@ class RegionSelectorOverlay(
         return TextView(context).apply {
             this.text = text
             setTextColor(Color.WHITE)
-            textSize = 16f
+            textSize = 14f
             gravity = Gravity.CENTER
-            setPadding(48, 24, 48, 24)
+            setPadding(32, 20, 32, 20)
             val bg = android.graphics.drawable.GradientDrawable().apply {
                 setColor(Color.parseColor(bgColor))
                 cornerRadius = 32f
@@ -386,54 +409,82 @@ class RegionSelectorOverlay(
     }
 
     @SuppressLint("SetTextI18n")
-    private fun confirmSelection() {
+    private fun confirmSelection(sendDirectImage: Boolean) {
         scope.launch {
-            statusText.text = "正在识别文字..."
-            statusText.visibility = View.VISIBLE
-            buttonBar.visibility = View.GONE
+            if (sendDirectImage) {
+                // Direct image mode: skip OCR, send bitmap directly
+                statusText.text = "准备发送图片..."
+                statusText.visibility = View.VISIBLE
+                buttonBar.visibility = View.GONE
 
-            try {
-                // Crop the bitmap
-                val cropRect = Rect(
-                    max(0, selectionRect.left.toInt()),
-                    max(0, selectionRect.top.toInt()),
-                    min(screenshot.width, selectionRect.right.toInt()),
-                    min(screenshot.height, selectionRect.bottom.toInt())
-                )
+                try {
+                    val cropRect = Rect(
+                        max(0, selectionRect.left.toInt()),
+                        max(0, selectionRect.top.toInt()),
+                        min(screenshot.width, selectionRect.right.toInt()),
+                        min(screenshot.height, selectionRect.bottom.toInt())
+                    )
 
-                val croppedBitmap = Bitmap.createBitmap(
-                    screenshot,
-                    cropRect.left, cropRect.top,
-                    cropRect.width(), cropRect.height()
-                )
+                    val croppedBitmap = Bitmap.createBitmap(
+                        screenshot,
+                        cropRect.left, cropRect.top,
+                        cropRect.width(), cropRect.height()
+                    )
 
-                // OCR
-                val recognizer = TextRecognitionManager()
-                val result = recognizer.recognizeText(croppedBitmap)
-                recognizer.close()
-
-                if (result.text.isBlank()) {
-                    statusText.text = "未识别到文字，请重新选择区域"
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        onConfirm?.invoke(croppedBitmap, "", true)
+                    }
+                } catch (e: Exception) {
+                    statusText.text = "处理失败: ${e.message}"
                     statusText.postDelayed({
                         statusText.visibility = View.GONE
                         buttonBar.visibility = View.VISIBLE
                     }, 2000)
-                } else {
-                    // Post callback to handler so it runs outside this scope
-                    // This prevents scope.cancel() in removeRegionSelector from
-                    // killing the callback execution
-                    val bitmap = croppedBitmap
-                    val text = result.text
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        onConfirm?.invoke(bitmap, text)
-                    }
                 }
-            } catch (e: Exception) {
-                statusText.text = "识别失败: ${e.message}"
-                statusText.postDelayed({
-                    statusText.visibility = View.GONE
-                    buttonBar.visibility = View.VISIBLE
-                }, 2000)
+            } else {
+                // OCR mode
+                statusText.text = "正在识别文字..."
+                statusText.visibility = View.VISIBLE
+                buttonBar.visibility = View.GONE
+
+                try {
+                    val cropRect = Rect(
+                        max(0, selectionRect.left.toInt()),
+                        max(0, selectionRect.top.toInt()),
+                        min(screenshot.width, selectionRect.right.toInt()),
+                        min(screenshot.height, selectionRect.bottom.toInt())
+                    )
+
+                    val croppedBitmap = Bitmap.createBitmap(
+                        screenshot,
+                        cropRect.left, cropRect.top,
+                        cropRect.width(), cropRect.height()
+                    )
+
+                    val recognizer = TextRecognitionManager()
+                    val result = recognizer.recognizeText(croppedBitmap)
+                    recognizer.close()
+
+                    if (result.text.isBlank()) {
+                        statusText.text = "未识别到文字，请重新选择区域"
+                        statusText.postDelayed({
+                            statusText.visibility = View.GONE
+                            buttonBar.visibility = View.VISIBLE
+                        }, 2000)
+                    } else {
+                        val bitmap = croppedBitmap
+                        val text = result.text
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            onConfirm?.invoke(bitmap, text, false)
+                        }
+                    }
+                } catch (e: Exception) {
+                    statusText.text = "识别失败: ${e.message}"
+                    statusText.postDelayed({
+                        statusText.visibility = View.GONE
+                        buttonBar.visibility = View.VISIBLE
+                    }, 2000)
+                }
             }
         }
     }

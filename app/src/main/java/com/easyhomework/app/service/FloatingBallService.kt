@@ -15,7 +15,6 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -71,7 +70,7 @@ class FloatingBallService : Service() {
 
         private const val CLICK_THRESHOLD = 10
         private const val BALL_SIZE_NORMAL = 52
-        private const val BALL_SIZE_MINI = 28
+        private const val BALL_SIZE_MINI = 18
         private const val LONG_PRESS_DURATION = 800L
 
         private var instance: FloatingBallService? = null
@@ -249,8 +248,9 @@ class FloatingBallService : Service() {
                     // Click: trigger screenshot
                     onFloatingBallClicked()
                 } else {
-                    // Snap to edge
-                    snapToEdge()
+                    // Save position
+                    preferencesManager.floatingBallX = ballParams?.x ?: 0
+                    preferencesManager.floatingBallY = ballParams?.y ?: 0
                 }
             }
 
@@ -277,34 +277,6 @@ class FloatingBallService : Service() {
                 stopSelf()
             }
             ?.start()
-    }
-
-    private fun snapToEdge() {
-        val params = ballParams ?: return
-        val screenWidth = resources.displayMetrics.widthPixels
-        val ballWidth = params.width
-
-        val targetX = if (params.x + ballWidth / 2 < screenWidth / 2) {
-            8
-        } else {
-            screenWidth - ballWidth - 8
-        }
-
-        val startX = params.x
-        floatingBallView?.animate()
-            ?.setDuration(250)
-            ?.setInterpolator(AccelerateDecelerateInterpolator())
-            ?.setUpdateListener { animator ->
-                val fraction = animator.animatedFraction
-                params.x = (startX + (targetX - startX) * fraction).toInt()
-                try {
-                    windowManager.updateViewLayout(floatingBallView, params)
-                } catch (_: Exception) {}
-            }
-            ?.start()
-
-        preferencesManager.floatingBallX = targetX
-        preferencesManager.floatingBallY = params.y
     }
 
     // ---- Screenshot Flow ----
@@ -342,9 +314,9 @@ class FloatingBallService : Service() {
         removeRegionSelector()
 
         regionSelector = RegionSelectorOverlay(this, screenshot).apply {
-            onConfirm = { croppedBitmap, recognizedText ->
+            onConfirm = { croppedBitmap, recognizedText, sendDirectImage ->
                 removeRegionSelector()
-                showAnswerPanel(croppedBitmap, recognizedText)
+                showAnswerPanel(croppedBitmap, recognizedText, sendDirectImage)
             }
             onCancel = {
                 removeRegionSelector()
@@ -376,11 +348,11 @@ class FloatingBallService : Service() {
 
     // ---- Answer Panel ----
 
-    fun showAnswerPanel(screenshot: Bitmap, recognizedText: String) {
+    fun showAnswerPanel(screenshot: Bitmap, recognizedText: String, sendDirectImage: Boolean = false) {
         removeAnswerPanel()
 
         try {
-            answerPanel = AnswerPanelOverlay(this, screenshot, recognizedText).apply {
+            answerPanel = AnswerPanelOverlay(this, screenshot, recognizedText, sendDirectImage).apply {
                 onClose = {
                     removeAnswerPanel()
                     showFloatingBallAgain()

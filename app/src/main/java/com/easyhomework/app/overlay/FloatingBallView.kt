@@ -74,7 +74,7 @@ class FloatingBallView @JvmOverloads constructor(
 
         if (isMiniMode) {
             // Mini mode: very small, no color, high transparency
-            val miniAlpha = 100
+            val miniAlpha = 50
             val miniPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
                 alpha = miniAlpha

@@ -19,6 +19,8 @@ enum class ApiType(val displayName: String) {
  * Supports both OpenAI-compatible and Anthropic API formats.
  */
 data class LLMConfig(
+    val id: String = "",
+    val name: String = "",
     val apiType: ApiType = ApiType.OPENAI,
     val apiEndpoint: String = "https://api.openai.com",
     val apiPath: String = "/v1/chat/completions",
@@ -30,7 +32,8 @@ data class LLMConfig(
     val stream: Boolean = true,
     val thinkingEnabled: Boolean = false,
     val thinkingBudget: Int = 10000,
-    val miniBall: Boolean = false
+    val miniBall: Boolean = false,
+    val supportsVision: Boolean = true
 ) {
     fun getFullUrl(): String {
         val base = apiEndpoint.trimEnd('/')
@@ -41,5 +44,31 @@ data class LLMConfig(
     fun getModelsUrl(): String {
         val base = apiEndpoint.trimEnd('/')
         return "$base/v1/models"
+    }
+
+    companion object {
+        /**
+         * Well-known vision-capable model patterns for auto-detection.
+         */
+        private val VISION_MODEL_PATTERNS = listOf(
+            "gpt-4o", "gpt-4-vision", "gpt-4-turbo",
+            "claude-3", "claude-sonnet-4", "claude-opus-4",
+            "gemini-pro-vision", "gemini-1.5", "gemini-2",
+            "qwen-vl", "qwen2-vl", "qwen-max",
+            "deepseek-vl",
+            "glm-4v", "glm-4",
+            "internvl",
+            "minicpm-v",
+            "llava",
+            "vision"
+        )
+
+        /**
+         * Detect if a model name likely supports vision input.
+         */
+        fun modelSupportsVision(modelName: String): Boolean {
+            val lower = modelName.lowercase()
+            return VISION_MODEL_PATTERNS.any { lower.contains(it) }
+        }
     }
 }
