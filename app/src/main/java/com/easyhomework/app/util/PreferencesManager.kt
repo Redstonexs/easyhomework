@@ -6,6 +6,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.LLMConfig
+import com.easyhomework.app.model.ThinkingDepth
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
@@ -49,7 +50,7 @@ class PreferencesManager(context: Context) {
                 "maxTokens" to config.maxTokens.toString(),
                 "stream" to config.stream.toString(),
                 "thinkingEnabled" to config.thinkingEnabled.toString(),
-                "thinkingBudget" to config.thinkingBudget.toString(),
+                "thinkingDepth" to config.thinkingDepth.name,
                 "supportsVision" to config.supportsVision.toString()
             )
         }
@@ -89,7 +90,7 @@ class PreferencesManager(context: Context) {
                     maxTokens = (data["maxTokens"] ?: "2048").toIntOrNull() ?: 2048,
                     stream = data["stream"]?.toBooleanStrictOrNull() ?: true,
                     thinkingEnabled = data["thinkingEnabled"]?.toBooleanStrictOrNull() ?: false,
-                    thinkingBudget = (data["thinkingBudget"] ?: "10000").toIntOrNull() ?: 10000,
+                    thinkingDepth = ThinkingDepth.fromString(data["thinkingDepth"] ?: "MEDIUM"),
                     supportsVision = data["supportsVision"]?.toBooleanStrictOrNull() ?: true
                 )
             }
@@ -134,7 +135,7 @@ class PreferencesManager(context: Context) {
             putInt(KEY_MAX_TOKENS, config.maxTokens)
             putBoolean(KEY_STREAM, config.stream)
             putBoolean(KEY_THINKING_ENABLED, config.thinkingEnabled)
-            putInt(KEY_THINKING_BUDGET, config.thinkingBudget)
+            putString(KEY_THINKING_DEPTH, config.thinkingDepth.name)
             putBoolean(KEY_MINI_BALL, config.miniBall)
             apply()
         }
@@ -161,7 +162,7 @@ class PreferencesManager(context: Context) {
             maxTokens = prefs.getInt(KEY_MAX_TOKENS, defaults.maxTokens),
             stream = prefs.getBoolean(KEY_STREAM, defaults.stream),
             thinkingEnabled = prefs.getBoolean(KEY_THINKING_ENABLED, defaults.thinkingEnabled),
-            thinkingBudget = prefs.getInt(KEY_THINKING_BUDGET, defaults.thinkingBudget),
+            thinkingDepth = ThinkingDepth.fromString(prefs.getString(KEY_THINKING_DEPTH, defaults.thinkingDepth.name) ?: defaults.thinkingDepth.name),
             miniBall = prefs.getBoolean(KEY_MINI_BALL, defaults.miniBall)
         )
     }
@@ -198,7 +199,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_MAX_TOKENS = "max_tokens"
         private const val KEY_STREAM = "stream"
         private const val KEY_THINKING_ENABLED = "thinking_enabled"
-        private const val KEY_THINKING_BUDGET = "thinking_budget"
+        private const val KEY_THINKING_DEPTH = "thinking_depth"
         private const val KEY_MINI_BALL = "mini_ball"
         private const val KEY_FLOATING_BALL_ENABLED = "floating_ball_enabled"
         private const val KEY_BALL_X = "ball_x"

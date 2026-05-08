@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.easyhomework.app.model.LLMConfig
+import com.easyhomework.app.model.ModelInfo
 import com.easyhomework.app.network.LLMRepository
 import com.easyhomework.app.util.PreferencesManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,8 +30,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _saveMessage = MutableStateFlow<String?>(null)
     val saveMessage: StateFlow<String?> = _saveMessage.asStateFlow()
 
-    private val _availableModels = MutableStateFlow<List<String>>(emptyList())
-    val availableModels: StateFlow<List<String>> = _availableModels.asStateFlow()
+    private val _availableModels = MutableStateFlow<List<ModelInfo>>(emptyList())
+    val availableModels: StateFlow<List<ModelInfo>> = _availableModels.asStateFlow()
 
     private val _isFetchingModels = MutableStateFlow(false)
     val isFetchingModels: StateFlow<Boolean> = _isFetchingModels.asStateFlow()
@@ -156,8 +157,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun selectModel(modelName: String) {
-        val supportsVision = LLMConfig.modelSupportsVision(modelName)
+    fun selectModel(modelName: String, supportsVision: Boolean = false) {
         _config.value = _config.value.copy(
             modelName = modelName,
             supportsVision = supportsVision

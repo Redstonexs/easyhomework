@@ -15,6 +15,23 @@ enum class ApiType(val displayName: String) {
 }
 
 /**
+ * Thinking depth levels for models with extended thinking.
+ */
+enum class ThinkingDepth(val displayName: String, val budgetTokens: Int, val openaiReasoningEffort: String) {
+    NONE("关闭", 0, ""),
+    LOW("轻度", 2048, "low"),
+    MEDIUM("中度", 8192, "medium"),
+    HIGH("深度", 24576, "high"),
+    XHIGH("极深", 50000, "high");
+
+    companion object {
+        fun fromString(value: String): ThinkingDepth {
+            return entries.find { it.name == value } ?: NONE
+        }
+    }
+}
+
+/**
  * LLM API configuration data class.
  * Supports both OpenAI-compatible and Anthropic API formats.
  */
@@ -31,7 +48,7 @@ data class LLMConfig(
     val maxTokens: Int = 2048,
     val stream: Boolean = true,
     val thinkingEnabled: Boolean = false,
-    val thinkingBudget: Int = 10000,
+    val thinkingDepth: ThinkingDepth = ThinkingDepth.MEDIUM,
     val miniBall: Boolean = false,
     val supportsVision: Boolean = true
 ) {

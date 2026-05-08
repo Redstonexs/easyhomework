@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.LLMConfig
+import com.easyhomework.app.model.ModelInfo
+import com.easyhomework.app.model.ThinkingDepth
 import com.easyhomework.app.service.FloatingBallService
 import com.easyhomework.app.ui.theme.*
 import com.easyhomework.app.viewmodel.SettingsViewModel
@@ -384,10 +386,7 @@ fun SettingsScreen(
                                 label = "模型名称",
                                 value = config.modelName,
                                 onValueChange = {
-                                    viewModel.updateConfig(config.copy(
-                                        modelName = it,
-                                        supportsVision = LLMConfig.modelSupportsVision(it)
-                                    ))
+                                    viewModel.updateConfig(config.copy(modelName = it))
                                 },
                                 placeholder = if (config.apiType == ApiType.OPENAI) "gpt-4o" else "claude-sonnet-4-20250514",
                                 icon = Icons.Outlined.SmartToy
@@ -429,8 +428,8 @@ fun SettingsScreen(
                                 modifier = Modifier.heightIn(max = 400.dp).widthIn(min = 280.dp)
                             ) {
                                 // Vision models section header
-                                val visionModels = availableModels.filter { LLMConfig.modelSupportsVision(it) }
-                                val otherModels = availableModels.filter { !LLMConfig.modelSupportsVision(it) }
+                                val visionModels = availableModels.filter { it.supportsVision }
+                                val otherModels = availableModels.filter { !it.supportsVision }
 
                                 if (visionModels.isNotEmpty()) {
                                     DropdownMenuItem(
@@ -450,8 +449,8 @@ fun SettingsScreen(
                                             text = {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Text(
-                                                        model,
-                                                        color = if (model == config.modelName) PrimaryPurple else TextPrimary,
+                                                        model.id,
+                                                        color = if (model.id == config.modelName) PrimaryPurple else TextPrimary,
                                                         fontSize = 14.sp
                                                     )
                                                     Spacer(modifier = Modifier.width(6.dp))
@@ -462,11 +461,11 @@ fun SettingsScreen(
                                                 }
                                             },
                                             onClick = {
-                                                viewModel.selectModel(model)
+                                                viewModel.selectModel(model.id, model.supportsVision)
                                                 showModelDropdown = false
                                             },
                                             trailingIcon = {
-                                                if (model == config.modelName) {
+                                                if (model.id == config.modelName) {
                                                     Icon(Icons.Filled.Check, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(16.dp))
                                                 }
                                             }
@@ -497,17 +496,17 @@ fun SettingsScreen(
                                     DropdownMenuItem(
                                         text = {
                                             Text(
-                                                model,
-                                                color = if (model == config.modelName) PrimaryPurple else TextPrimary,
+                                                model.id,
+                                                color = if (model.id == config.modelName) PrimaryPurple else TextPrimary,
                                                 fontSize = 14.sp
                                             )
                                         },
                                         onClick = {
-                                            viewModel.selectModel(model)
+                                            viewModel.selectModel(model.id, model.supportsVision)
                                             showModelDropdown = false
                                         },
                                         trailingIcon = {
-                                            if (model == config.modelName) {
+                                            if (model.id == config.modelName) {
                                                 Icon(Icons.Filled.Check, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(16.dp))
                                             }
                                         }
@@ -697,28 +696,68 @@ fun SettingsScreen(
                                 )
                             }
 
-                            // Thinking budget (Anthropic only)
+                            // Thinking depth selector
                             AnimatedVisibility(
-                                visible = config.thinkingEnabled && config.apiType == ApiType.ANTHROPIC
+                                visible = config.thinkingEnabled
                             ) {
                                 Column {
                                     Spacer(modifier = Modifier.height(12.dp))
                                     Text(
-                                        "思考预算: ${config.thinkingBudget} tokens",
+                                        "思考深度",
                                         style = MaterialTheme.typography.bodyMedium, color = TextPrimary
                                     )
-                                    Slider(
-                                        value = config.thinkingBudget.toFloat(),
-                                        onValueChange = {
-                                            viewModel.updateConfig(config.copy(thinkingBudget = it.toInt()))
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        ThinkingDepth.entries.forEach { depth ->
+                                            val isSelected = config.thinkingDepth == depth
+                                            FilterChip(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    viewModel.updateConfig(config.copy(thinkingDepth = depth))
+                                                },
+                                                label = {
+                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        Text(
+                                                            depth.displayName,
+                                                            fontSize = 14.sp,
+                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                        )
+                                                        if (depth != ThinkingDepth.NONE) {
+                                                            Text(
+                                                                when (config.apiType) {
+                                                                    ApiType.OPENAI -> depth.openaiReasoningEffort
+                                                                    ApiType.ANTHROPIC -> "${depth.budgetTokens / 1024}K"
+                                                                },
+                                                                fontSize = 10.sp,
+                                                                color = TextTertiary
+                                                            )
+                                                        }
+                                                    }
+                                                },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = AccentCyan.copy(alpha = 0.3f),
+                                                    selectedLabelColor = AccentCyan,
+                                                    containerColor = DarkSurfaceVariant,
+                                                    labelColor = TextSecondary
+                                                )
+                                            )
+                                        }
+                                    }
+
+                                    // Description
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        when (config.thinkingDepth) {
+                                            ThinkingDepth.NONE -> "不使用思考模式，适合不支持该功能的模型"
+                                            ThinkingDepth.LOW -> "快速思考，适合简单题目"
+                                            ThinkingDepth.MEDIUM -> "平衡模式，适合大多数题目"
+                                            ThinkingDepth.HIGH -> "深度思考，适合复杂题目"
+                                            ThinkingDepth.XHIGH -> "极深思考，适合竞赛难题"
                                         },
-                                        valueRange = 1024f..50000f,
-                                        steps = 48,
-                                        colors = SliderDefaults.colors(
-                                            thumbColor = AccentCyan,
-                                            activeTrackColor = AccentCyan,
-                                            inactiveTrackColor = DarkSurfaceVariant
-                                        )
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextTertiary
                                     )
                                 }
                             }

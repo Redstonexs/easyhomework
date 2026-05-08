@@ -5,6 +5,8 @@ import android.util.Base64
 import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.LLMConfig
+import com.easyhomework.app.model.ModelInfo
+import com.easyhomework.app.model.ThinkingDepth
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
@@ -125,9 +127,9 @@ class LLMRepository {
     }
 
     /**
-     * Fetch available models from the API.
+     * Fetch available models from the API with capability information.
      */
-    suspend fun fetchModels(config: LLMConfig): Result<List<String>> = withContext(Dispatchers.IO) {
+    suspend fun fetchModels(config: LLMConfig): Result<List<ModelInfo>> = withContext(Dispatchers.IO) {
         try {
             val requestBuilder = Request.Builder()
                 .url(config.getModelsUrl())
@@ -162,17 +164,65 @@ class LLMRepository {
         }
     }
 
-    private fun parseModelsResponse(body: String, @Suppress("UNUSED_PARAMETER") apiType: ApiType): List<String> {
+    private fun parseModelsResponse(body: String, apiType: ApiType): List<ModelInfo> {
         return try {
             val json = JsonParser.parseString(body).asJsonObject
             val dataArray = json.getAsJsonArray("data") ?: return emptyList()
 
             dataArray.map { it.asJsonObject }
-                .mapNotNull { it.get("id")?.asString }
-                .sorted()
+                .map { modelJson ->
+                    val id = modelJson.get("id")?.asString ?: return@map null
+                    val supportsVision = detectVisionCapability(modelJson, apiType)
+                    ModelInfo(id = id, supportsVision = supportsVision)
+                }
+                .filterNotNull()
+                .sortedBy { it.id }
         } catch (e: Exception) {
             emptyList()
         }
+    }
+
+    /**
+     * Detect vision capability from model metadata in API response.
+     */
+    private fun detectVisionCapability(modelJson: com.google.gson.JsonObject, apiType: ApiType): Boolean {
+        // Check explicit capabilities field (OpenAI style)
+        val capabilities = modelJson.getAsJsonObject("capabilities")
+        if (capabilities != null) {
+            if (capabilities.has("vision") && capabilities.get("vision").asBoolean) {
+                return true
+            }
+        }
+
+        // Check modalities field
+        val modalities = modelJson.getAsJsonArray("modalities")
+        if (modalities != null) {
+            for (modality in modalities) {
+                if (modality.asString == "image" || modality.asString == "vision") {
+                    return true
+                }
+            }
+        }
+
+        // Check input_types field
+        val inputTypes = modelJson.getAsJsonArray("input_types")
+        if (inputTypes != null) {
+            for (inputType in inputTypes) {
+                if (inputType.asString == "image" || inputType.asString == "vision") {
+                    return true
+                }
+            }
+        }
+
+        // For Anthropic, all Claude 3+ models support vision
+        if (apiType == ApiType.ANTHROPIC) {
+            val id = modelJson.get("id")?.asString?.lowercase() ?: ""
+            if (id.contains("claude-3") || id.contains("claude-sonnet-4") || id.contains("claude-opus-4")) {
+                return true
+            }
+        }
+
+        return false
     }
 
     // ---- Request Building ----
@@ -247,8 +297,13 @@ class LLMRepository {
         )
 
         // Only add temperature for non-thinking models (o1/o3 don't support it)
-        if (!config.thinkingEnabled) {
+        if (!config.thinkingEnabled || config.thinkingDepth == ThinkingDepth.NONE) {
             body["temperature"] = config.temperature
+        }
+
+        // Add reasoning effort for OpenAI-compatible thinking models
+        if (config.thinkingEnabled && config.thinkingDepth != ThinkingDepth.NONE) {
+            body["reasoning_effort"] = config.thinkingDepth.openaiReasoningEffort
         }
 
         return gson.toJson(body)
@@ -294,16 +349,16 @@ class LLMRepository {
             body["system"] = config.systemPrompt
         }
 
-        // Only add temperature when thinking is disabled
-        if (!config.thinkingEnabled) {
+        // Only add temperature when thinking is disabled or depth is NONE
+        if (!config.thinkingEnabled || config.thinkingDepth == ThinkingDepth.NONE) {
             body["temperature"] = config.temperature
         }
 
         // Extended thinking for Anthropic
-        if (config.thinkingEnabled) {
+        if (config.thinkingEnabled && config.thinkingDepth != ThinkingDepth.NONE) {
             body["thinking"] = mapOf(
                 "type" to "enabled",
-                "budget_tokens" to config.thinkingBudget
+                "budget_tokens" to config.thinkingDepth.budgetTokens
             )
         }
 
