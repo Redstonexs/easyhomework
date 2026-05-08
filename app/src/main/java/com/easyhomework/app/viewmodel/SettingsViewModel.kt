@@ -157,10 +157,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun selectModel(modelName: String, supportsVision: Boolean = false) {
+    fun selectModel(
+        modelName: String,
+        supportsVision: Boolean = false,
+        supportsFunctionCalling: Boolean = true,
+        supportsThinking: Boolean = false
+    ) {
         _config.value = _config.value.copy(
             modelName = modelName,
-            supportsVision = supportsVision
+            supportsVision = supportsVision,
+            supportsFunctionCalling = supportsFunctionCalling,
+            supportsThinking = supportsThinking
         )
     }
 }

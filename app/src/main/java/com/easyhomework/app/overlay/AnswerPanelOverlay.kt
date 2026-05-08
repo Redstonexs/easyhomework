@@ -19,6 +19,9 @@ import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.model.QueryHistory
 import com.easyhomework.app.network.LLMRepository
+import com.easyhomework.app.tools.ToolCall
+import com.easyhomework.app.tools.ToolExecutor
+import com.easyhomework.app.tools.ToolRegistry
 import com.easyhomework.app.util.PreferencesManager
 import io.noties.markwon.Markwon
 import kotlinx.coroutines.*
@@ -29,7 +32,7 @@ import kotlinx.coroutines.flow.collect
  * Features:
  * - Quark-style bottom slide-up panel
  * - Streaming answer display with typing effect
- * - Multi-turn follow-up questions
+ * - Multi-turn follow-up questions with tool calling
  * - Copy and regenerate functionality
  * - Markdown rendering
  * - Frosted glass background effect
@@ -47,6 +50,7 @@ class AnswerPanelOverlay(
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val llmRepository = LLMRepository()
+    private val toolExecutor = ToolExecutor()
     private val preferencesManager = PreferencesManager(serviceContext)
     private val markwon: Markwon = try {
         Markwon.create(serviceContext)
@@ -78,6 +82,7 @@ class AnswerPanelOverlay(
     private val cardBgColor = Color.parseColor("#252540")
     private val userBubbleColor = Color.parseColor("#6C63FF")
     private val assistantBubbleColor = Color.parseColor("#2A2A3E")
+    private val toolBubbleColor = Color.parseColor("#1A3A2A")
     private val textColor = Color.parseColor("#E8E8F0")
     private val secondaryTextColor = Color.parseColor("#A0A0B8")
     private val accentColor = Color.parseColor("#6C63FF")
@@ -99,13 +104,8 @@ class AnswerPanelOverlay(
 
     @SuppressLint("ClickableViewAccessibility")
     private fun buildUI() {
-        // Semi-transparent backdrop
         setBackgroundColor(Color.parseColor("#80000000"))
-        setOnClickListener {
-            // Click outside panel to dismiss (optional)
-        }
 
-        // Main panel container
         panelContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             val bg = GradientDrawable().apply {
@@ -131,7 +131,6 @@ class AnswerPanelOverlay(
 
         addView(panelContainer, panelParams)
 
-        // ---- Drag Handle ----
         val handleContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -148,14 +147,12 @@ class AnswerPanelOverlay(
         handleContainer.addView(dragHandle, LinearLayout.LayoutParams(dp(48f).toInt(), dp(5f).toInt()))
         panelContainer.addView(handleContainer)
 
-        // ---- Header ----
         val headerLayout = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(20f).toInt(), dp(4f).toInt(), dp(12f).toInt(), dp(12f).toInt())
         }
 
-        // Title
         val titleText = TextView(context).apply {
             text = if (sendDirectImage) "✨ AI 识图助手" else "✨ AI 解题助手"
             setTextColor(textColor)
@@ -164,7 +161,6 @@ class AnswerPanelOverlay(
         }
         headerLayout.addView(titleText, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
 
-        // Close button
         val closeBtn = TextView(context).apply {
             text = "✕"
             setTextColor(secondaryTextColor)
@@ -177,13 +173,11 @@ class AnswerPanelOverlay(
 
         panelContainer.addView(headerLayout)
 
-        // Divider
         val divider = View(context).apply {
             setBackgroundColor(Color.parseColor("#333350"))
         }
         panelContainer.addView(divider, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 1))
 
-        // ---- Scrollable Messages Area ----
         scrollView = ScrollView(context).apply {
             isVerticalScrollBarEnabled = true
             isFillViewport = true
@@ -200,7 +194,6 @@ class AnswerPanelOverlay(
             LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
         )
 
-        // ---- Bottom Input Area ----
         val inputContainer = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -211,7 +204,6 @@ class AnswerPanelOverlay(
             background = inputBg
         }
 
-        // Action buttons row
         val actionsRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -224,7 +216,6 @@ class AnswerPanelOverlay(
         actionsRow.addView(regenBtn)
         panelContainer.addView(actionsRow)
 
-        // Input field
         inputField = EditText(context).apply {
             hint = "追问..."
             setHintTextColor(Color.parseColor("#666680"))
@@ -250,7 +241,6 @@ class AnswerPanelOverlay(
             LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
         )
 
-        // Send button
         sendButton = ImageView(context).apply {
             val sendBg = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
@@ -323,7 +313,6 @@ class AnswerPanelOverlay(
         val isVisionMode = sendDirectImage && (config.supportsVision || LLMConfig.modelSupportsVision(config.modelName))
 
         if (isVisionMode) {
-            // Vision mode: send image with optional text prompt
             val promptText = if (recognizedText.isNotBlank()) {
                 recognizedText
             } else {
@@ -333,16 +322,12 @@ class AnswerPanelOverlay(
             messages.add(userMessage)
             addUserBubbleWithImage(promptText)
         } else {
-            // OCR mode: send text only
             val userMessage = ChatMessage.user(recognizedText)
             messages.add(userMessage)
             addUserBubble(recognizedText)
         }
 
-        // Show loading
         val loadingView = addAssistantBubble("", isLoading = true)
-
-        // Start streaming
         sendToLLM(loadingView)
     }
 
@@ -352,19 +337,14 @@ class AnswerPanelOverlay(
 
         inputField.text.clear()
 
-        // Hide keyboard
         val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(inputField.windowToken, 0)
 
-        // Add user message
         val userMessage = ChatMessage.user(text)
         messages.add(userMessage)
         addUserBubble(text)
 
-        // Show loading bubble
         val loadingView = addAssistantBubble("", isLoading = true)
-
-        // Send to LLM
         sendToLLM(loadingView)
     }
 
@@ -385,9 +365,17 @@ class AnswerPanelOverlay(
         isThinkingPhase = false
         thinkingView = null
 
+        // Get tool definitions if function calling is supported
+        val tools = if (config.supportsVision || LLMConfig.modelSupportsVision(config.modelName)) {
+            // Most modern models support tools, so we always provide them
+            ToolRegistry.getToolDefinitions()
+        } else {
+            ToolRegistry.getToolDefinitions()
+        }
+
         scope.launch {
             if (config.stream) {
-                llmRepository.streamChatCompletion(config, messages).collect { event ->
+                llmRepository.streamChatCompletion(config, messages, tools).collect { event ->
                     when (event) {
                         is LLMRepository.StreamEvent.Started -> {
                             updateBubbleText(loadingView, "思考中...", isLoading = true)
@@ -425,10 +413,23 @@ class AnswerPanelOverlay(
                             )
                             scrollToBottom()
                         }
+                        is LLMRepository.StreamEvent.ToolCall -> {
+                            // Handle tool call
+                            handleToolCall(event.toolCall, loadingView)
+                        }
                         is LLMRepository.StreamEvent.Completed -> {
                             val fullText = currentStreamingText.toString()
-                            messages.add(ChatMessage.assistant(fullText))
-                            updateBubbleText(loadingView, fullText, isLoading = false)
+                            if (fullText.isNotBlank()) {
+                                messages.add(ChatMessage.assistant(fullText))
+                                updateBubbleText(loadingView, fullText, isLoading = false)
+                            } else {
+                                // Remove loading bubble if no content
+                                handler.post {
+                                    try {
+                                        messagesContainer.removeView(loadingView.parent as? View)
+                                    } catch (_: Exception) {}
+                                }
+                            }
                             scrollToBottom()
                             saveToHistory()
                         }
@@ -441,13 +442,19 @@ class AnswerPanelOverlay(
                 }
             } else {
                 updateBubbleText(loadingView, "正在思考...", isLoading = true)
-                val result = llmRepository.chatCompletion(config, messages)
+                val result = llmRepository.chatCompletion(config, messages, tools)
                 result.fold(
-                    onSuccess = { text ->
-                        messages.add(ChatMessage.assistant(text))
-                        updateBubbleText(loadingView, text, isLoading = false)
-                        scrollToBottom()
-                        saveToHistory()
+                    onSuccess = { response ->
+                        if (response.toolCalls != null && response.toolCalls.isNotEmpty()) {
+                            // Handle tool calls for non-streaming
+                            handleToolCalls(response.toolCalls, loadingView)
+                        } else {
+                            val text = response.content ?: ""
+                            messages.add(ChatMessage.assistant(text))
+                            updateBubbleText(loadingView, text, isLoading = false)
+                            scrollToBottom()
+                            saveToHistory()
+                        }
                     },
                     onFailure = { error ->
                         updateBubbleText(loadingView, "❌ ${error.message}", isLoading = false)
@@ -458,39 +465,66 @@ class AnswerPanelOverlay(
         }
     }
 
-    private fun addThinkingBubble(): TextView {
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.START
-            setPadding(0, dp(2f).toInt(), dp(40f).toInt(), dp(4f).toInt())
+    private suspend fun handleToolCall(toolCall: ToolCall, @Suppress("UNUSED_PARAMETER") loadingView: TextView) {
+        // Add tool call to messages
+        messages.add(ChatMessage.assistantWithToolCalls(null, listOf(toolCall)))
+
+        // Show tool execution status
+        val toolName = when (toolCall.name) {
+            "get_current_datetime" -> "获取日期时间"
+            "calculate" -> "计算数学表达式"
+            "evaluate_js" -> "执行 JavaScript"
+            "convert_unit" -> "单位转换"
+            else -> toolCall.name
+        }
+        addToolBubble("🔧 正在调用工具: $toolName")
+
+        // Execute tool
+        val result = toolExecutor.execute(toolCall)
+
+        // Add tool result to messages
+        messages.add(ChatMessage.toolResult(toolCall.id, result.content))
+
+        // Show tool result
+        if (result.isError) {
+            addToolBubble("⚠️ 工具执行失败: ${result.content}")
+        } else {
+            addToolBubble("✅ 工具结果: ${result.content}")
         }
 
-        val label = TextView(context).apply {
-            this.text = "💭 思考过程"
-            setTextColor(Color.parseColor("#8888AA"))
-            textSize = 10f
-            setPadding(dp(4f).toInt(), 0, 0, dp(2f).toInt())
-        }
-        container.addView(label)
+        // Continue conversation with tool result
+        val newLoadingView = addAssistantBubble("", isLoading = true)
+        sendToLLM(newLoadingView)
+    }
 
-        val bubble = TextView(context).apply {
-            setTextColor(Color.parseColor("#7777AA"))
-            textSize = 12f
-            setTypeface(null, Typeface.ITALIC)
-            val bg = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.parseColor("#1A6C63FF"))
-                cornerRadius = dp(12f)
+    private suspend fun handleToolCalls(toolCalls: List<ToolCall>, @Suppress("UNUSED_PARAMETER") loadingView: TextView) {
+        // Add assistant message with tool calls
+        messages.add(ChatMessage.assistantWithToolCalls(null, toolCalls))
+
+        for (toolCall in toolCalls) {
+            val toolName = when (toolCall.name) {
+                "get_current_datetime" -> "获取日期时间"
+                "calculate" -> "计算数学表达式"
+                "evaluate_js" -> "执行 JavaScript"
+                "convert_unit" -> "单位转换"
+                else -> toolCall.name
             }
-            background = bg
-            setPadding(dp(12f).toInt(), dp(8f).toInt(), dp(12f).toInt(), dp(8f).toInt())
-            setLineSpacing(dp(2f), 1f)
+            addToolBubble("🔧 正在调用工具: $toolName")
+
+            val result = toolExecutor.execute(toolCall)
+
+            messages.add(ChatMessage.toolResult(toolCall.id, result.content))
+
+            if (result.isError) {
+                addToolBubble("⚠️ 工具执行失败: ${result.content}")
+            } else {
+                addToolBubble("✅ 工具结果: ${result.content}")
+            }
         }
 
-        container.addView(bubble)
-        messagesContainer.addView(container)
-        scrollToBottom()
-
-        return bubble
+        // Continue conversation with tool results
+        val newLoadingView = addAssistantBubble("", isLoading = true)
+        sendToLLM(newLoadingView)
     }
 
     // ---- Bubble Views ----
@@ -531,7 +565,6 @@ class AnswerPanelOverlay(
             setPadding(dp(40f).toInt(), dp(4f).toInt(), 0, dp(8f).toInt())
         }
 
-        // Image preview bubble
         val imagePreview = ImageView(context).apply {
             val maxSize = dp(160f).toInt()
             val scale = minOf(
@@ -566,7 +599,6 @@ class AnswerPanelOverlay(
         }
         container.addView(imagePreview, imageParams)
 
-        // Text bubble (if there's text)
         if (text.isNotBlank()) {
             val bubble = TextView(context).apply {
                 this.text = "📸 $text"
@@ -598,7 +630,6 @@ class AnswerPanelOverlay(
             setPadding(0, dp(4f).toInt(), dp(40f).toInt(), dp(8f).toInt())
         }
 
-        // AI label
         val label = TextView(context).apply {
             this.text = "🤖 AI 助手"
             setTextColor(secondaryTextColor)
@@ -636,6 +667,66 @@ class AnswerPanelOverlay(
         scrollToBottom()
 
         return bubble
+    }
+
+    private fun addThinkingBubble(): TextView {
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.START
+            setPadding(0, dp(2f).toInt(), dp(40f).toInt(), dp(4f).toInt())
+        }
+
+        val label = TextView(context).apply {
+            this.text = "💭 思考过程"
+            setTextColor(Color.parseColor("#8888AA"))
+            textSize = 10f
+            setPadding(dp(4f).toInt(), 0, 0, dp(2f).toInt())
+        }
+        container.addView(label)
+
+        val bubble = TextView(context).apply {
+            setTextColor(Color.parseColor("#7777AA"))
+            textSize = 12f
+            setTypeface(null, Typeface.ITALIC)
+            val bg = GradientDrawable().apply {
+                setColor(Color.parseColor("#1A6C63FF"))
+                cornerRadius = dp(12f)
+            }
+            background = bg
+            setPadding(dp(12f).toInt(), dp(8f).toInt(), dp(12f).toInt(), dp(8f).toInt())
+            setLineSpacing(dp(2f), 1f)
+        }
+
+        container.addView(bubble)
+        messagesContainer.addView(container)
+        scrollToBottom()
+
+        return bubble
+    }
+
+    private fun addToolBubble(text: String) {
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.START
+            setPadding(0, dp(2f).toInt(), dp(40f).toInt(), dp(4f).toInt())
+        }
+
+        val bubble = TextView(context).apply {
+            this.text = text
+            setTextColor(Color.parseColor("#88CC88"))
+            textSize = 12f
+            val bg = GradientDrawable().apply {
+                setColor(toolBubbleColor)
+                cornerRadius = dp(12f)
+            }
+            background = bg
+            setPadding(dp(12f).toInt(), dp(8f).toInt(), dp(12f).toInt(), dp(8f).toInt())
+            setLineSpacing(dp(2f), 1f)
+        }
+
+        container.addView(bubble)
+        messagesContainer.addView(container)
+        scrollToBottom()
     }
 
     private fun updateBubbleText(bubble: TextView, text: String, isLoading: Boolean) {

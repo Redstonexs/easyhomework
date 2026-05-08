@@ -461,7 +461,12 @@ fun SettingsScreen(
                                                 }
                                             },
                                             onClick = {
-                                                viewModel.selectModel(model.id, model.supportsVision)
+                                                viewModel.selectModel(
+                                                    model.id,
+                                                    model.supportsVision,
+                                                    model.supportsFunctionCalling,
+                                                    model.supportsThinking
+                                                )
                                                 showModelDropdown = false
                                             },
                                             trailingIcon = {
@@ -502,7 +507,12 @@ fun SettingsScreen(
                                             )
                                         },
                                         onClick = {
-                                            viewModel.selectModel(model.id, model.supportsVision)
+                                            viewModel.selectModel(
+                                                model.id,
+                                                model.supportsVision,
+                                                model.supportsFunctionCalling,
+                                                model.supportsThinking
+                                            )
                                             showModelDropdown = false
                                         },
                                         trailingIcon = {

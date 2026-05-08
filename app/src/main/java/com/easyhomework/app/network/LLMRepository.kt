@@ -7,6 +7,10 @@ import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.model.ModelInfo
 import com.easyhomework.app.model.ThinkingDepth
+import com.easyhomework.app.tools.ToolCall
+import com.easyhomework.app.tools.ToolDefinition
+import com.easyhomework.app.tools.ToolRegistry
+import com.easyhomework.app.tools.ToolResult
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +31,7 @@ import java.util.concurrent.TimeUnit
  * Repository for LLM API calls with streaming support.
  * Supports both OpenAI-compatible and Anthropic APIs.
  * Supports vision models with image input.
+ * Supports function calling / tool use.
  */
 class LLMRepository {
 
@@ -44,11 +49,12 @@ class LLMRepository {
      */
     fun streamChatCompletion(
         config: LLMConfig,
-        messages: List<ChatMessage>
+        messages: List<ChatMessage>,
+        tools: List<ToolDefinition>? = null
     ): Flow<StreamEvent> = flow {
         emit(StreamEvent.Started)
 
-        val requestBody = buildRequestBody(config, messages, stream = true)
+        val requestBody = buildRequestBody(config, messages, stream = true, tools = tools)
         val request = buildRequest(config, requestBody)
 
         try {
@@ -77,6 +83,9 @@ class LLMRepository {
                         is SSEStreamParser.ParseResult.Thinking -> {
                             emit(StreamEvent.Thinking(result.text))
                         }
+                        is SSEStreamParser.ParseResult.ToolCall -> {
+                            emit(StreamEvent.ToolCall(result.toolCall))
+                        }
                         is SSEStreamParser.ParseResult.Done -> {
                             break
                         }
@@ -101,10 +110,11 @@ class LLMRepository {
      */
     suspend fun chatCompletion(
         config: LLMConfig,
-        messages: List<ChatMessage>
-    ): Result<String> = withContext(Dispatchers.IO) {
+        messages: List<ChatMessage>,
+        tools: List<ToolDefinition>? = null
+    ): Result<ChatResponse> = withContext(Dispatchers.IO) {
         try {
-            val requestBody = buildRequestBody(config, messages, stream = false)
+            val requestBody = buildRequestBody(config, messages, stream = false, tools = tools)
             val request = buildRequest(config, requestBody)
             val response = client.newCall(request).execute()
 
@@ -117,10 +127,10 @@ class LLMRepository {
                 Exception("Empty response body")
             )
 
-            val content = sseParser.parseFullResponse(responseBody, config.apiType)
+            val chatResponse = parseFullResponse(responseBody, config.apiType)
                 ?: return@withContext Result.failure(Exception("Failed to parse response"))
 
-            Result.success(content)
+            Result.success(chatResponse)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -173,7 +183,14 @@ class LLMRepository {
                 .map { modelJson ->
                     val id = modelJson.get("id")?.asString ?: return@map null
                     val supportsVision = detectVisionCapability(modelJson, apiType)
-                    ModelInfo(id = id, supportsVision = supportsVision)
+                    val supportsFunctionCalling = detectFunctionCallingCapability(modelJson, apiType, id)
+                    val supportsThinking = detectThinkingCapability(modelJson, apiType, id)
+                    ModelInfo(
+                        id = id,
+                        supportsVision = supportsVision,
+                        supportsFunctionCalling = supportsFunctionCalling,
+                        supportsThinking = supportsThinking
+                    )
                 }
                 .filterNotNull()
                 .sortedBy { it.id }
@@ -225,6 +242,167 @@ class LLMRepository {
         return false
     }
 
+    /**
+     * Detect function calling capability from model metadata.
+     */
+    private fun detectFunctionCallingCapability(modelJson: com.google.gson.JsonObject, apiType: ApiType, modelId: String): Boolean {
+        // Check explicit capabilities field
+        val capabilities = modelJson.getAsJsonObject("capabilities")
+        if (capabilities != null) {
+            if (capabilities.has("function_calling") && capabilities.get("function_calling").asBoolean) {
+                return true
+            }
+            if (capabilities.has("tool_use") && capabilities.get("tool_use").asBoolean) {
+                return true
+            }
+        }
+
+        // Check supported_features field
+        val features = modelJson.getAsJsonArray("supported_features")
+        if (features != null) {
+            for (feature in features) {
+                val f = feature.asString.lowercase()
+                if (f == "function_calling" || f == "tool_use" || f == "tools") {
+                    return true
+                }
+            }
+        }
+
+        // Model name based detection as fallback
+        val lower = modelId.lowercase()
+
+        // OpenAI models that support function calling
+        if (lower.contains("gpt-4") || lower.contains("gpt-3.5-turbo") ||
+            lower.contains("o1") || lower.contains("o3") || lower.contains("o4")) {
+            return true
+        }
+
+        // Anthropic Claude models (all Claude 3+ support tool use)
+        if (apiType == ApiType.ANTHROPIC) {
+            if (lower.contains("claude-3") || lower.contains("claude-sonnet-4") || lower.contains("claude-opus-4")) {
+                return true
+            }
+        }
+
+        // Other models that typically support function calling
+        val functionCallingPatterns = listOf(
+            "gemini-1.5", "gemini-2", "gemini-pro",
+            "qwen-max", "qwen-plus", "qwen-turbo",
+            "deepseek-chat", "deepseek-coder",
+            "glm-4", "glm-3",
+            "mistral", "mixtral"
+        )
+
+        return functionCallingPatterns.any { lower.contains(it) }
+    }
+
+    /**
+     * Detect thinking/reasoning capability from model metadata.
+     */
+    private fun detectThinkingCapability(modelJson: com.google.gson.JsonObject, apiType: ApiType, modelId: String): Boolean {
+        // Check explicit capabilities field
+        val capabilities = modelJson.getAsJsonObject("capabilities")
+        if (capabilities != null) {
+            if (capabilities.has("reasoning") && capabilities.get("reasoning").asBoolean) {
+                return true
+            }
+            if (capabilities.has("thinking") && capabilities.get("thinking").asBoolean) {
+                return true
+            }
+        }
+
+        // Model name based detection
+        val lower = modelId.lowercase()
+
+        // OpenAI reasoning models
+        if (lower.contains("o1") || lower.contains("o3") || lower.contains("o4")) {
+            return true
+        }
+
+        // Anthropic Claude with extended thinking
+        if (apiType == ApiType.ANTHROPIC) {
+            if (lower.contains("claude-3") || lower.contains("claude-sonnet-4") || lower.contains("claude-opus-4")) {
+                return true
+            }
+        }
+
+        // DeepSeek reasoning models
+        if (lower.contains("deepseek-r1") || lower.contains("deepseek-reasoner")) {
+            return true
+        }
+
+        return false
+    }
+
+    // ---- Response Parsing ----
+
+    data class ChatResponse(
+        val content: String?,
+        val toolCalls: List<ToolCall>?,
+        val thinking: String? = null
+    )
+
+    private fun parseFullResponse(body: String, apiType: ApiType): ChatResponse? {
+        return try {
+            val json = JsonParser.parseString(body).asJsonObject
+
+            when (apiType) {
+                ApiType.OPENAI -> parseOpenAIResponse(json)
+                ApiType.ANTHROPIC -> parseAnthropicResponse(json)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun parseOpenAIResponse(json: com.google.gson.JsonObject): ChatResponse? {
+        val choices = json.getAsJsonArray("choices") ?: return null
+        if (choices.size() == 0) return null
+
+        val message = choices[0].asJsonObject.getAsJsonObject("message") ?: return null
+        val content = message.get("content")?.asString
+
+        // Parse tool calls
+        val toolCallsArray = message.getAsJsonArray("tool_calls")
+        val toolCalls = toolCallsArray?.map { tc ->
+            val function = tc.asJsonObject.getAsJsonObject("function")
+            ToolCall(
+                id = tc.asJsonObject.get("id")?.asString ?: "",
+                name = function?.get("name")?.asString ?: "",
+                arguments = function?.get("arguments")?.asString ?: "{}"
+            )
+        }
+
+        return ChatResponse(content = content, toolCalls = toolCalls)
+    }
+
+    private fun parseAnthropicResponse(json: com.google.gson.JsonObject): ChatResponse? {
+        val content = json.getAsJsonArray("content") ?: return null
+
+        var textContent: String? = null
+        var thinkingContent: String? = null
+        val toolCalls = mutableListOf<ToolCall>()
+
+        for (block in content) {
+            val blockObj = block.asJsonObject
+            val type = blockObj.get("type")?.asString
+
+            when (type) {
+                "text" -> textContent = blockObj.get("text")?.asString
+                "thinking" -> thinkingContent = blockObj.get("thinking")?.asString
+                "tool_use" -> {
+                    toolCalls.add(ToolCall(
+                        id = blockObj.get("id")?.asString ?: "",
+                        name = blockObj.get("name")?.asString ?: "",
+                        arguments = blockObj.getAsJsonObject("input")?.toString() ?: "{}"
+                    ))
+                }
+            }
+        }
+
+        return ChatResponse(content = textContent, toolCalls = toolCalls, thinking = thinkingContent)
+    }
+
     // ---- Request Building ----
 
     private fun buildRequest(config: LLMConfig, body: String): Request {
@@ -250,18 +428,20 @@ class LLMRepository {
     private fun buildRequestBody(
         config: LLMConfig,
         messages: List<ChatMessage>,
-        stream: Boolean
+        stream: Boolean,
+        tools: List<ToolDefinition>? = null
     ): String {
         return when (config.apiType) {
-            ApiType.OPENAI -> buildOpenAIBody(config, messages, stream)
-            ApiType.ANTHROPIC -> buildAnthropicBody(config, messages, stream)
+            ApiType.OPENAI -> buildOpenAIBody(config, messages, stream, tools)
+            ApiType.ANTHROPIC -> buildAnthropicBody(config, messages, stream, tools)
         }
     }
 
     private fun buildOpenAIBody(
         config: LLMConfig,
         messages: List<ChatMessage>,
-        stream: Boolean
+        stream: Boolean,
+        tools: List<ToolDefinition>? = null
     ): String {
         val apiMessages = mutableListOf<Map<String, Any>>()
 
@@ -284,6 +464,30 @@ class LLMRepository {
                     content.add(mapOf("type" to "text", "text" to msg.content))
                 }
                 apiMessages.add(mapOf("role" to msg.role, "content" to content))
+            } else if (msg.toolCalls != null) {
+                // Assistant message with tool calls
+                val toolCallsMap = msg.toolCalls.map { tc ->
+                    mapOf(
+                        "id" to tc.id,
+                        "type" to "function",
+                        "function" to mapOf(
+                            "name" to tc.name,
+                            "arguments" to tc.arguments
+                        )
+                    )
+                }
+                apiMessages.add(mapOf(
+                    "role" to "assistant",
+                    "content" to msg.content,
+                    "tool_calls" to toolCallsMap
+                ))
+            } else if (msg.toolCallId != null) {
+                // Tool result message
+                apiMessages.add(mapOf(
+                    "role" to "tool",
+                    "tool_call_id" to msg.toolCallId,
+                    "content" to msg.content
+                ))
             } else {
                 apiMessages.add(mapOf("role" to msg.role, "content" to msg.content))
             }
@@ -306,13 +510,20 @@ class LLMRepository {
             body["reasoning_effort"] = config.thinkingDepth.openaiReasoningEffort
         }
 
+        // Add tools if provided
+        if (!tools.isNullOrEmpty()) {
+            body["tools"] = tools.map { it.toJson() }
+            body["tool_choice"] = "auto"
+        }
+
         return gson.toJson(body)
     }
 
     private fun buildAnthropicBody(
         config: LLMConfig,
         messages: List<ChatMessage>,
-        stream: Boolean
+        stream: Boolean,
+        tools: List<ToolDefinition>? = null
     ): String {
         val apiMessages = mutableListOf<Map<String, Any>>()
 
@@ -332,6 +543,28 @@ class LLMRepository {
                     content.add(mapOf("type" to "text", "text" to msg.content))
                 }
                 apiMessages.add(mapOf("role" to msg.role, "content" to content))
+            } else if (msg.toolCalls != null) {
+                // Assistant message with tool use
+                val content = mutableListOf<Map<String, Any>>()
+                msg.toolCalls.forEach { tc ->
+                    content.add(mapOf(
+                        "type" to "tool_use",
+                        "id" to tc.id,
+                        "name" to tc.name,
+                        "input" to JsonParser.parseString(tc.arguments).asJsonObject
+                    ))
+                }
+                apiMessages.add(mapOf("role" to "assistant", "content" to content))
+            } else if (msg.toolCallId != null) {
+                // Tool result message
+                apiMessages.add(mapOf(
+                    "role" to "user",
+                    "content" to listOf(mapOf(
+                        "type" to "tool_result",
+                        "tool_use_id" to msg.toolCallId,
+                        "content" to msg.content
+                    ))
+                ))
             } else {
                 apiMessages.add(mapOf("role" to msg.role, "content" to msg.content))
             }
@@ -360,6 +593,17 @@ class LLMRepository {
                 "type" to "enabled",
                 "budget_tokens" to config.thinkingDepth.budgetTokens
             )
+        }
+
+        // Add tools if provided
+        if (!tools.isNullOrEmpty()) {
+            body["tools"] = tools.map { tool ->
+                mapOf(
+                    "name" to tool.name,
+                    "description" to tool.description,
+                    "input_schema" to tool.parameters
+                )
+            }
         }
 
         return gson.toJson(body)
@@ -395,6 +639,7 @@ class LLMRepository {
         object Started : StreamEvent()
         data class Token(val text: String) : StreamEvent()
         data class Thinking(val text: String) : StreamEvent()
+        data class ToolCall(val toolCall: com.easyhomework.app.tools.ToolCall) : StreamEvent()
         object Completed : StreamEvent()
         data class Error(val message: String) : StreamEvent()
     }

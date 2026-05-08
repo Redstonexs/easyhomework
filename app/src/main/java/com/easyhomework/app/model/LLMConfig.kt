@@ -50,7 +50,9 @@ data class LLMConfig(
     val thinkingEnabled: Boolean = false,
     val thinkingDepth: ThinkingDepth = ThinkingDepth.MEDIUM,
     val miniBall: Boolean = false,
-    val supportsVision: Boolean = true
+    val supportsVision: Boolean = true,
+    val supportsFunctionCalling: Boolean = true,
+    val supportsThinking: Boolean = false
 ) {
     fun getFullUrl(): String {
         val base = apiEndpoint.trimEnd('/')

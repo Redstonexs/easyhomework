@@ -1,13 +1,24 @@
 package com.easyhomework.app.network
 
 import com.easyhomework.app.model.ApiType
+import com.easyhomework.app.tools.ToolCall
 import com.google.gson.JsonParser
 
 /**
  * Parses Server-Sent Events (SSE) stream from OpenAI and Anthropic APIs.
  * Robust handling of non-standard lines, comments, and edge cases.
+ * Supports tool call streaming.
  */
 class SSEStreamParser {
+
+    // Buffer for accumulating tool call arguments across chunks
+    private val toolCallBuffers = mutableMapOf<Int, ToolCallBuffer>()
+
+    private data class ToolCallBuffer(
+        val id: String,
+        val name: String,
+        val arguments: StringBuilder = StringBuilder()
+    )
 
     /**
      * Parse a single SSE line for OpenAI-compatible APIs.
@@ -76,6 +87,51 @@ class SSEStreamParser {
                 }
             }
 
+            // Check for tool calls
+            if (delta.has("tool_calls")) {
+                val toolCalls = delta.getAsJsonArray("tool_calls")
+                for (tc in toolCalls) {
+                    val tcObj = tc.asJsonObject
+                    val index = tcObj.get("index")?.asInt ?: 0
+                    val id = tcObj.get("id")?.asString
+                    val function = tcObj.getAsJsonObject("function")
+                    val name = function?.get("name")?.asString
+                    val arguments = function?.get("arguments")?.asString
+
+                    if (id != null && name != null) {
+                        // New tool call
+                        toolCallBuffers[index] = ToolCallBuffer(id = id, name = name)
+                        if (arguments != null) {
+                            toolCallBuffers[index]?.arguments?.append(arguments)
+                        }
+                    } else if (arguments != null) {
+                        // Continuing tool call arguments
+                        toolCallBuffers[index]?.arguments?.append(arguments)
+                    }
+                }
+
+                // Check if this is a complete tool call (has finish_reason or no more chunks expected)
+                if (choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull) {
+                    val finishReason = choice.get("finish_reason").asString
+                    if (finishReason == "tool_calls" || finishReason == "stop") {
+                        // Return the first complete tool call
+                        val firstToolCall = toolCallBuffers.values.firstOrNull()
+                        if (firstToolCall != null) {
+                            val result = ParseResult.ToolCall(ToolCall(
+                                id = firstToolCall.id,
+                                name = firstToolCall.name,
+                                arguments = firstToolCall.arguments.toString()
+                            ))
+                            // Clear buffer
+                            toolCallBuffers.clear()
+                            return result
+                        }
+                    }
+                }
+
+                return ParseResult.Skip
+            }
+
             // Check for regular content
             if (delta.has("content")) {
                 val content = delta.get("content")
@@ -86,6 +142,17 @@ class SSEStreamParser {
 
             // Check for finish reason
             if (choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull) {
+                // If we have buffered tool calls, return them
+                val firstToolCall = toolCallBuffers.values.firstOrNull()
+                if (firstToolCall != null) {
+                    val result = ParseResult.ToolCall(ToolCall(
+                        id = firstToolCall.id,
+                        name = firstToolCall.name,
+                        arguments = firstToolCall.arguments.toString()
+                    ))
+                    toolCallBuffers.clear()
+                    return result
+                }
                 return ParseResult.Done
             }
 
@@ -105,6 +172,19 @@ class SSEStreamParser {
             val type = jsonObject.get("type")?.asString ?: return ParseResult.Skip
 
             when (type) {
+                "content_block_start" -> {
+                    val contentBlock = jsonObject.getAsJsonObject("content_block")
+                    if (contentBlock != null) {
+                        val blockType = contentBlock.get("type")?.asString
+                        if (blockType == "tool_use") {
+                            val id = contentBlock.get("id")?.asString ?: ""
+                            val name = contentBlock.get("name")?.asString ?: ""
+                            // Start buffering a new tool call
+                            toolCallBuffers[0] = ToolCallBuffer(id = id, name = name)
+                        }
+                    }
+                    ParseResult.Skip
+                }
                 "content_block_delta" -> {
                     val delta = jsonObject.getAsJsonObject("delta") ?: return ParseResult.Skip
                     val deltaType = delta.get("type")?.asString
@@ -118,14 +198,37 @@ class SSEStreamParser {
                             val thinking = delta.get("thinking")?.asString ?: return ParseResult.Skip
                             ParseResult.Thinking(thinking)
                         }
+                        "input_json_delta" -> {
+                            val partialJson = delta.get("partial_json")?.asString ?: return ParseResult.Skip
+                            toolCallBuffers[0]?.arguments?.append(partialJson)
+                            ParseResult.Skip
+                        }
                         else -> ParseResult.Skip
                     }
                 }
-                "message_stop" -> ParseResult.Done
+                "content_block_stop" -> {
+                    // Check if this is the end of a tool use block
+                    val bufferedToolCall = toolCallBuffers.values.firstOrNull()
+                    if (bufferedToolCall != null && bufferedToolCall.arguments.isNotEmpty()) {
+                        val result = ParseResult.ToolCall(ToolCall(
+                            id = bufferedToolCall.id,
+                            name = bufferedToolCall.name,
+                            arguments = bufferedToolCall.arguments.toString()
+                        ))
+                        toolCallBuffers.clear()
+                        return result
+                    }
+                    ParseResult.Skip
+                }
+                "message_stop" -> {
+                    toolCallBuffers.clear()
+                    ParseResult.Done
+                }
                 "message_delta" -> {
                     // Check for stop reason
                     val delta = jsonObject.getAsJsonObject("delta")
                     if (delta?.has("stop_reason") == true && !delta.get("stop_reason").isJsonNull) {
+                        toolCallBuffers.clear()
                         ParseResult.Done
                     } else {
                         ParseResult.Skip
@@ -177,6 +280,7 @@ class SSEStreamParser {
     sealed class ParseResult {
         data class Content(val text: String) : ParseResult()
         data class Thinking(val text: String) : ParseResult()
+        data class ToolCall(val toolCall: com.easyhomework.app.tools.ToolCall) : ParseResult()
         data class Error(val message: String) : ParseResult()
         object Done : ParseResult()
         object Skip : ParseResult()

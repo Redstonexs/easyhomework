@@ -5,5 +5,7 @@ package com.easyhomework.app.model
  */
 data class ModelInfo(
     val id: String,
-    val supportsVision: Boolean = false
+    val supportsVision: Boolean = false,
+    val supportsFunctionCalling: Boolean = false,
+    val supportsThinking: Boolean = false
 )

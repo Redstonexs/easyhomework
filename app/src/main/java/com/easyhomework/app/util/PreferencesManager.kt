@@ -52,6 +52,8 @@ class PreferencesManager(context: Context) {
                 "thinkingEnabled" to config.thinkingEnabled.toString(),
                 "thinkingDepth" to config.thinkingDepth.name,
                 "supportsVision" to config.supportsVision.toString(),
+                "supportsFunctionCalling" to config.supportsFunctionCalling.toString(),
+                "supportsThinking" to config.supportsThinking.toString(),
                 "miniBall" to config.miniBall.toString()
             )
         }
@@ -93,6 +95,8 @@ class PreferencesManager(context: Context) {
                     thinkingEnabled = data["thinkingEnabled"]?.toBooleanStrictOrNull() ?: false,
                     thinkingDepth = ThinkingDepth.fromString(data["thinkingDepth"] ?: "NONE"),
                     supportsVision = data["supportsVision"]?.toBooleanStrictOrNull() ?: true,
+                    supportsFunctionCalling = data["supportsFunctionCalling"]?.toBooleanStrictOrNull() ?: true,
+                    supportsThinking = data["supportsThinking"]?.toBooleanStrictOrNull() ?: false,
                     miniBall = data["miniBall"]?.toBooleanStrictOrNull() ?: false
                 )
             }
