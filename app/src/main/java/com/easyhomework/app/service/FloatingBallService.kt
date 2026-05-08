@@ -70,7 +70,7 @@ class FloatingBallService : Service() {
 
         private const val CLICK_THRESHOLD = 10
         private const val BALL_SIZE_NORMAL = 52
-        private const val BALL_SIZE_MINI = 18
+        private const val BALL_SIZE_MINI = 14
         private const val LONG_PRESS_DURATION = 800L
 
         private var instance: FloatingBallService? = null
