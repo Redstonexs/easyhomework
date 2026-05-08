@@ -375,6 +375,9 @@ class AnswerPanelOverlay(
 
         scope.launch {
             if (config.stream) {
+                val pendingToolCalls = mutableListOf<ToolCall>()
+                var hasTextContent = false
+
                 llmRepository.streamChatCompletion(config, messages, tools).collect { event ->
                     when (event) {
                         is LLMRepository.StreamEvent.Started -> {
@@ -405,6 +408,7 @@ class AnswerPanelOverlay(
                                 }
                                 updateBubbleText(loadingView, "", isLoading = true)
                             }
+                            hasTextContent = true
                             currentStreamingText.append(event.text)
                             updateBubbleText(
                                 loadingView,
@@ -414,24 +418,44 @@ class AnswerPanelOverlay(
                             scrollToBottom()
                         }
                         is LLMRepository.StreamEvent.ToolCall -> {
-                            // Handle tool call
-                            handleToolCall(event.toolCall, loadingView)
+                            pendingToolCalls.add(event.toolCall)
                         }
                         is LLMRepository.StreamEvent.Completed -> {
-                            val fullText = currentStreamingText.toString()
-                            if (fullText.isNotBlank()) {
-                                messages.add(ChatMessage.assistant(fullText))
-                                updateBubbleText(loadingView, fullText, isLoading = false)
-                            } else {
-                                // Remove loading bubble if no content
-                                handler.post {
-                                    try {
-                                        messagesContainer.removeView(loadingView.parent as? View)
-                                    } catch (_: Exception) {}
+                            // If we have pending tool calls, handle them
+                            if (pendingToolCalls.isNotEmpty()) {
+                                // First, finalize any text content
+                                val fullText = currentStreamingText.toString()
+                                if (fullText.isNotBlank()) {
+                                    messages.add(ChatMessage.assistant(fullText))
+                                    updateBubbleText(loadingView, fullText, isLoading = false)
+                                } else {
+                                    // Remove loading bubble
+                                    handler.post {
+                                        try {
+                                            (loadingView.parent as? ViewGroup)?.removeView(loadingView.parent as? View)
+                                                ?: messagesContainer.removeView(loadingView.parent as? View)
+                                        } catch (_: Exception) {}
+                                    }
                                 }
+
+                                // Process tool calls
+                                processToolCalls(pendingToolCalls.toList())
+                            } else {
+                                // No tool calls, just show the text response
+                                val fullText = currentStreamingText.toString()
+                                if (fullText.isNotBlank()) {
+                                    messages.add(ChatMessage.assistant(fullText))
+                                    updateBubbleText(loadingView, fullText, isLoading = false)
+                                } else {
+                                    handler.post {
+                                        try {
+                                            (loadingView.parent as? ViewGroup)?.removeView(loadingView.parent as? View)
+                                        } catch (_: Exception) {}
+                                    }
+                                }
+                                scrollToBottom()
+                                saveToHistory()
                             }
-                            scrollToBottom()
-                            saveToHistory()
                         }
                         is LLMRepository.StreamEvent.Error -> {
                             val errorText = "❌ ${event.message}"
@@ -465,32 +489,7 @@ class AnswerPanelOverlay(
         }
     }
 
-    private suspend fun handleToolCall(toolCall: ToolCall, @Suppress("UNUSED_PARAMETER") loadingView: TextView) {
-        // Add tool call to messages
-        messages.add(ChatMessage.assistantWithToolCalls(null, listOf(toolCall)))
-
-        // Parse arguments for display
-        val argsDisplay = parseToolCallArgs(toolCall)
-        val toolName = getToolDisplayName(toolCall.name)
-
-        // Show tool call with arguments
-        addToolCallBubble(toolName, argsDisplay)
-
-        // Execute tool
-        val result = toolExecutor.execute(toolCall)
-
-        // Add tool result to messages
-        messages.add(ChatMessage.toolResult(toolCall.id, result.content))
-
-        // Show tool result
-        addToolResultBubble(result.content, result.isError)
-
-        // Continue conversation with tool result
-        val newLoadingView = addAssistantBubble("", isLoading = true)
-        sendToLLM(newLoadingView)
-    }
-
-    private suspend fun handleToolCalls(toolCalls: List<ToolCall>, @Suppress("UNUSED_PARAMETER") loadingView: TextView) {
+    private suspend fun processToolCalls(toolCalls: List<ToolCall>) {
         // Add assistant message with tool calls
         messages.add(ChatMessage.assistantWithToolCalls(null, toolCalls))
 
@@ -501,17 +500,33 @@ class AnswerPanelOverlay(
             // Show tool call with arguments
             addToolCallBubble(toolName, argsDisplay)
 
+            // Execute tool
             val result = toolExecutor.execute(toolCall)
 
+            // Add tool result to messages
             messages.add(ChatMessage.toolResult(toolCall.id, result.content))
 
             // Show tool result
             addToolResultBubble(result.content, result.isError)
         }
 
-        // Continue conversation with tool results
-        val newLoadingView = addAssistantBubble("", isLoading = true)
-        sendToLLM(newLoadingView)
+        // Continue conversation with tool results - create new loading bubble and send
+        handler.post {
+            val newLoadingView = addAssistantBubble("", isLoading = true)
+            sendToLLM(newLoadingView)
+        }
+    }
+
+    private suspend fun handleToolCalls(toolCalls: List<ToolCall>, @Suppress("UNUSED_PARAMETER") loadingView: TextView) {
+        // Remove loading bubble
+        handler.post {
+            try {
+                (loadingView.parent as? ViewGroup)?.removeView(loadingView.parent as? View)
+            } catch (_: Exception) {}
+        }
+
+        // Process tool calls
+        processToolCalls(toolCalls)
     }
 
     // ---- Bubble Views ----
