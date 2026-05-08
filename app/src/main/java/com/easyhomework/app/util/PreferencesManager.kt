@@ -51,7 +51,8 @@ class PreferencesManager(context: Context) {
                 "stream" to config.stream.toString(),
                 "thinkingEnabled" to config.thinkingEnabled.toString(),
                 "thinkingDepth" to config.thinkingDepth.name,
-                "supportsVision" to config.supportsVision.toString()
+                "supportsVision" to config.supportsVision.toString(),
+                "miniBall" to config.miniBall.toString()
             )
         }
         prefs.edit().putString(KEY_PROVIDER_CONFIGS, gson.toJson(configDataList)).apply()
@@ -90,8 +91,9 @@ class PreferencesManager(context: Context) {
                     maxTokens = (data["maxTokens"] ?: "2048").toIntOrNull() ?: 2048,
                     stream = data["stream"]?.toBooleanStrictOrNull() ?: true,
                     thinkingEnabled = data["thinkingEnabled"]?.toBooleanStrictOrNull() ?: false,
-                    thinkingDepth = ThinkingDepth.fromString(data["thinkingDepth"] ?: "MEDIUM"),
-                    supportsVision = data["supportsVision"]?.toBooleanStrictOrNull() ?: true
+                    thinkingDepth = ThinkingDepth.fromString(data["thinkingDepth"] ?: "NONE"),
+                    supportsVision = data["supportsVision"]?.toBooleanStrictOrNull() ?: true,
+                    miniBall = data["miniBall"]?.toBooleanStrictOrNull() ?: false
                 )
             }
         } catch (e: Exception) {
