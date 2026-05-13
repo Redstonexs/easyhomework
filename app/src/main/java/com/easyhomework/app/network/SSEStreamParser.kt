@@ -114,17 +114,12 @@ class SSEStreamParser {
                 if (choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull) {
                     val finishReason = choice.get("finish_reason").asString
                     if (finishReason == "tool_calls" || finishReason == "stop") {
-                        // Return the first complete tool call
-                        val firstToolCall = toolCallBuffers.values.firstOrNull()
-                        if (firstToolCall != null) {
-                            val result = ParseResult.ToolCall(ToolCall(
-                                id = firstToolCall.id,
-                                name = firstToolCall.name,
-                                arguments = firstToolCall.arguments.toString()
-                            ))
-                            // Clear buffer
-                            toolCallBuffers.clear()
-                            return result
+                        val allToolCalls = toolCallBuffers.values.map { buf ->
+                            ToolCall(id = buf.id, name = buf.name, arguments = buf.arguments.toString())
+                        }
+                        toolCallBuffers.clear()
+                        if (allToolCalls.isNotEmpty()) {
+                            return ParseResult.ToolCalls(allToolCalls)
                         }
                     }
                 }
@@ -143,22 +138,20 @@ class SSEStreamParser {
             // Check for finish reason
             if (choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull) {
                 // If we have buffered tool calls, return them
-                val firstToolCall = toolCallBuffers.values.firstOrNull()
-                if (firstToolCall != null) {
-                    val result = ParseResult.ToolCall(ToolCall(
-                        id = firstToolCall.id,
-                        name = firstToolCall.name,
-                        arguments = firstToolCall.arguments.toString()
-                    ))
-                    toolCallBuffers.clear()
-                    return result
+                val allToolCalls = toolCallBuffers.values.map { buf ->
+                    ToolCall(id = buf.id, name = buf.name, arguments = buf.arguments.toString())
+                }
+                toolCallBuffers.clear()
+                if (allToolCalls.isNotEmpty()) {
+                    return ParseResult.ToolCalls(allToolCalls)
                 }
                 return ParseResult.Done
             }
 
             ParseResult.Skip
         } catch (e: Exception) {
-            // Silently skip unparseable data instead of emitting errors
+            // Clear stale buffers on parse error to prevent state leaks
+            toolCallBuffers.clear()
             ParseResult.Skip
         }
     }
@@ -277,10 +270,18 @@ class SSEStreamParser {
         }
     }
 
+    /**
+     * Reset parser state between requests.
+     */
+    fun reset() {
+        toolCallBuffers.clear()
+    }
+
     sealed class ParseResult {
         data class Content(val text: String) : ParseResult()
         data class Thinking(val text: String) : ParseResult()
         data class ToolCall(val toolCall: com.easyhomework.app.tools.ToolCall) : ParseResult()
+        data class ToolCalls(val toolCalls: List<com.easyhomework.app.tools.ToolCall>) : ParseResult()
         data class Error(val message: String) : ParseResult()
         object Done : ParseResult()
         object Skip : ParseResult()

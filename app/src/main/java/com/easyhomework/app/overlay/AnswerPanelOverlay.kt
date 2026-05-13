@@ -432,8 +432,9 @@ class AnswerPanelOverlay(
                                     // Remove loading bubble
                                     handler.post {
                                         try {
-                                            (loadingView.parent as? ViewGroup)?.removeView(loadingView.parent as? View)
-                                                ?: messagesContainer.removeView(loadingView.parent as? View)
+                                            (loadingView.parent as? View)?.let { container ->
+                                                (container.parent as? ViewGroup)?.removeView(container)
+                                            }
                                         } catch (_: Exception) {}
                                     }
                                 }
@@ -449,7 +450,9 @@ class AnswerPanelOverlay(
                                 } else {
                                     handler.post {
                                         try {
-                                            (loadingView.parent as? ViewGroup)?.removeView(loadingView.parent as? View)
+                                            (loadingView.parent as? View)?.let { container ->
+                                                (container.parent as? ViewGroup)?.removeView(container)
+                                            }
                                         } catch (_: Exception) {}
                                     }
                                 }
@@ -521,7 +524,9 @@ class AnswerPanelOverlay(
         // Remove loading bubble
         handler.post {
             try {
-                (loadingView.parent as? ViewGroup)?.removeView(loadingView.parent as? View)
+                (loadingView.parent as? View)?.let { container ->
+                    (container.parent as? ViewGroup)?.removeView(container)
+                }
             } catch (_: Exception) {}
         }
 

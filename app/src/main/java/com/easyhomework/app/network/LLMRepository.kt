@@ -54,6 +54,7 @@ class LLMRepository {
     ): Flow<StreamEvent> = flow {
         emit(StreamEvent.Started)
 
+        sseParser.reset()
         val requestBody = buildRequestBody(config, messages, stream = true, tools = tools)
         val request = buildRequest(config, requestBody)
 
@@ -85,6 +86,11 @@ class LLMRepository {
                         }
                         is SSEStreamParser.ParseResult.ToolCall -> {
                             emit(StreamEvent.ToolCall(result.toolCall))
+                        }
+                        is SSEStreamParser.ParseResult.ToolCalls -> {
+                            for (tc in result.toolCalls) {
+                                emit(StreamEvent.ToolCall(tc))
+                            }
                         }
                         is SSEStreamParser.ParseResult.Done -> {
                             break
