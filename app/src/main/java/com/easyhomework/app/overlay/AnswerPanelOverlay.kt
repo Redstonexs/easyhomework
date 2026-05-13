@@ -11,6 +11,7 @@ import android.os.Looper
 import android.text.method.ScrollingMovementMethod
 import android.view.*
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.*
@@ -30,20 +31,22 @@ import kotlinx.coroutines.flow.collect
 /**
  * Bottom sheet-style overlay panel that displays LLM answers.
  * Features:
- * - Quark-style bottom slide-up panel
+ * - Material 3 inspired styling with consistent corner radii
  * - Streaming answer display with typing effect
  * - Multi-turn follow-up questions with tool calling
  * - Copy and regenerate functionality
  * - Markdown rendering
  * - Frosted glass background effect
  * - Vision model support (direct image input)
+ * - Collapsible thinking bubble
+ * - Swipe-to-dismiss gesture on drag handle
  */
 @SuppressLint("ViewConstructor")
 class AnswerPanelOverlay(
     private val serviceContext: Context,
     private val screenshotBitmap: Bitmap,
     private val recognizedText: String,
-    private val sendDirectImage: Boolean = false
+    private val sendDirectImage: Boolean = false,
 ) : FrameLayout(serviceContext) {
 
     var onClose: (() -> Unit)? = null
@@ -77,17 +80,28 @@ class AnswerPanelOverlay(
     private lateinit var sendButton: ImageView
     private lateinit var dragHandle: View
 
-    // Colors
-    private val panelBgColor = Color.parseColor("#F01A1A2E")
-    private val cardBgColor = Color.parseColor("#252540")
-    private val userBubbleColor = Color.parseColor("#6C63FF")
-    private val assistantBubbleColor = Color.parseColor("#2A2A3E")
-    private val toolBubbleColor = Color.parseColor("#1A3A2A")
-    private val textColor = Color.parseColor("#E8E8F0")
-    private val secondaryTextColor = Color.parseColor("#A0A0B8")
-    private val accentColor = Color.parseColor("#6C63FF")
+    // M3 Dark Theme Color Palette
+    private val bgColor = Color.parseColor("#E6000000") // scrim 90%
+    private val surfaceColor = Color.parseColor("#1A1A2E") // surface
+    private val surfaceContainerColor = Color.parseColor("#1E1E32") // surfaceContainer
+    private val surfaceContainerHighColor = Color.parseColor("#252540") // surfaceContainerHigh
+    private val surfaceContainerHighestColor = Color.parseColor("#2A2A48") // surfaceContainerHighest
+    private val onSurfaceColor = Color.parseColor("#E8E8F0") // onSurface
+    private val onSurfaceVariantColor = Color.parseColor("#A0A0B8") // onSurfaceVariant
+    private val outlineColor = Color.parseColor("#6B6B80") // outline
+    private val outlineVariantColor = Color.parseColor("#333350") // outlineVariant
+    private val primaryColor = Color.parseColor("#6C63FF") // primary
+    private val onPrimaryColor = Color.WHITE
+    private val tertiaryColor = Color.parseColor("#00BCD4") // tertiary
+    private val tertiaryContainerColor = Color.parseColor("#1A00BCD4") // tertiaryContainer
+    private val errorColor = Color.parseColor("#EF5350") // error
+    private val errorContainerColor = Color.parseColor("#26EF5350") // errorContainer
 
     private val density = serviceContext.resources.displayMetrics.density
+
+    // Swipe-to-dismiss state
+    private var touchStartY = 0f
+    private var isDragging = false
 
     init {
         buildUI()
@@ -104,19 +118,19 @@ class AnswerPanelOverlay(
 
     @SuppressLint("ClickableViewAccessibility")
     private fun buildUI() {
-        setBackgroundColor(Color.parseColor("#80000000"))
+        setBackgroundColor(bgColor)
 
         panelContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             val bg = GradientDrawable().apply {
-                setColor(panelBgColor)
+                setColor(surfaceColor)
                 cornerRadii = floatArrayOf(
-                    dp(24f), dp(24f), dp(24f), dp(24f),
-                    0f, 0f, 0f, 0f
+                    dp(28f), dp(28f), dp(28f), dp(28f),
+                    0f, 0f, 0f, 0f,
                 )
             }
             background = bg
-            elevation = dp(16f)
+            elevation = dp(24f)
             clipToOutline = true
         }
 
@@ -124,60 +138,98 @@ class AnswerPanelOverlay(
         val panelHeight = (screenHeight * 0.65f).toInt()
         val panelParams = LayoutParams(
             LayoutParams.MATCH_PARENT,
-            panelHeight
+            panelHeight,
         ).apply {
             gravity = Gravity.BOTTOM
         }
 
         addView(panelContainer, panelParams)
 
+        // Drag handle container with swipe gesture
         val handleContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(0, dp(12f).toInt(), 0, dp(8f).toInt())
+            setPadding(0, dp(16f).toInt(), 0, dp(8f).toInt())
+            setOnTouchListener { _, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        touchStartY = event.rawY
+                        isDragging = false
+                        false
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val deltaY = event.rawY - touchStartY
+                        if (deltaY > 0) {
+                            isDragging = true
+                            panelContainer.translationY = deltaY * 0.4f // dampened drag
+                            true
+                        } else false
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        if (isDragging) {
+                            val deltaY = event.rawY - touchStartY
+                            if (deltaY > dp(120f)) {
+                                animateOut()
+                            } else {
+                                panelContainer.animate()
+                                    .translationY(0f)
+                                    .setDuration(250)
+                                    .setInterpolator(OvershootInterpolator(1.2f))
+                                    .start()
+                            }
+                            isDragging = false
+                            true
+                        } else false
+                    }
+                    else -> false
+                }
+            }
         }
 
         dragHandle = View(context).apply {
             val handleBg = GradientDrawable().apply {
-                setColor(Color.parseColor("#555570"))
+                setColor(onSurfaceVariantColor)
                 cornerRadius = dp(3f)
             }
             background = handleBg
         }
-        handleContainer.addView(dragHandle, LinearLayout.LayoutParams(dp(48f).toInt(), dp(5f).toInt()))
+        handleContainer.addView(dragHandle, LinearLayout.LayoutParams(dp(48f).toInt(), dp(4f).toInt()))
         panelContainer.addView(handleContainer)
 
+        // Header
         val headerLayout = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20f).toInt(), dp(4f).toInt(), dp(12f).toInt(), dp(12f).toInt())
+            setPadding(dp(24f).toInt(), dp(4f).toInt(), dp(16f).toInt(), dp(16f).toInt())
         }
 
         val titleText = TextView(context).apply {
-            text = if (sendDirectImage) "✨ AI 识图助手" else "✨ AI 解题助手"
-            setTextColor(textColor)
+            text = if (sendDirectImage) "AI 识图助手" else "AI 解题助手"
+            setTextColor(onSurfaceColor)
             textSize = 18f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         headerLayout.addView(titleText, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
 
         val closeBtn = TextView(context).apply {
-            text = "✕"
-            setTextColor(secondaryTextColor)
-            textSize = 20f
+            text = "\u2715"
+            setTextColor(onSurfaceVariantColor)
+            textSize = 18f
             gravity = Gravity.CENTER
-            setPadding(dp(12f).toInt(), dp(8f).toInt(), dp(12f).toInt(), dp(8f).toInt())
+            setPadding(dp(16f).toInt(), dp(10f).toInt(), dp(16f).toInt(), dp(10f).toInt())
             setOnClickListener { animateOut() }
         }
         headerLayout.addView(closeBtn)
 
         panelContainer.addView(headerLayout)
 
+        // Divider
         val divider = View(context).apply {
-            setBackgroundColor(Color.parseColor("#333350"))
+            setBackgroundColor(outlineVariantColor)
         }
         panelContainer.addView(divider, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 1))
 
+        // Messages scroll area
         scrollView = ScrollView(context).apply {
             isVerticalScrollBarEnabled = true
             isFillViewport = true
@@ -185,50 +237,53 @@ class AnswerPanelOverlay(
 
         messagesContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16f).toInt(), dp(12f).toInt(), dp(16f).toInt(), dp(12f).toInt())
+            setPadding(dp(20f).toInt(), dp(16f).toInt(), dp(20f).toInt(), dp(16f).toInt())
         }
         scrollView.addView(messagesContainer)
 
         panelContainer.addView(
             scrollView,
-            LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
+            LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f),
         )
 
-        val inputContainer = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12f).toInt(), dp(8f).toInt(), dp(12f).toInt(), dp(16f).toInt())
-            val inputBg = GradientDrawable().apply {
-                setColor(Color.parseColor("#15FFFFFF"))
-            }
-            background = inputBg
-        }
-
+        // Action buttons row
         val actionsRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16f).toInt(), 0, dp(16f).toInt(), dp(4f).toInt())
+            setPadding(dp(20f).toInt(), 0, dp(20f).toInt(), dp(8f).toInt())
         }
 
-        val copyBtn = createActionButton("📋 复制") { copyLastAnswer() }
-        val regenBtn = createActionButton("🔄 重新生成") { regenerateAnswer() }
+        val copyBtn = createActionButton("复制") { copyLastAnswer() }
+        val regenBtn = createActionButton("重新生成") { regenerateAnswer() }
         actionsRow.addView(copyBtn)
         actionsRow.addView(regenBtn)
         panelContainer.addView(actionsRow)
 
+        // Input area
+        val inputContainer = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16f).toInt(), dp(8f).toInt(), dp(16f).toInt(), dp(20f).toInt())
+            val bg = GradientDrawable().apply {
+                setColor(surfaceContainerColor)
+                cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)
+            }
+            background = bg
+        }
+
         inputField = EditText(context).apply {
             hint = "追问..."
-            setHintTextColor(Color.parseColor("#666680"))
-            setTextColor(textColor)
+            setHintTextColor(outlineColor)
+            setTextColor(onSurfaceColor)
             textSize = 15f
             maxLines = 3
             imeOptions = EditorInfo.IME_ACTION_SEND
             val inputBg = GradientDrawable().apply {
-                setColor(Color.parseColor("#252540"))
+                setColor(surfaceContainerHighColor)
                 cornerRadius = dp(24f)
             }
             background = inputBg
-            setPadding(dp(20f).toInt(), dp(12f).toInt(), dp(12f).toInt(), dp(12f).toInt())
+            setPadding(dp(20f).toInt(), dp(14f).toInt(), dp(16f).toInt(), dp(14f).toInt())
             setOnEditorActionListener { _, actionId, _ ->
                 if (actionId == EditorInfo.IME_ACTION_SEND) {
                     sendFollowUp()
@@ -238,24 +293,24 @@ class AnswerPanelOverlay(
         }
         inputContainer.addView(
             inputField,
-            LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+            LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f),
         )
 
         sendButton = ImageView(context).apply {
             val sendBg = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(accentColor)
+                setColor(primaryColor)
             }
             background = sendBg
-            setPadding(dp(10f).toInt(), dp(10f).toInt(), dp(10f).toInt(), dp(10f).toInt())
+            setPadding(dp(12f).toInt(), dp(12f).toInt(), dp(12f).toInt(), dp(12f).toInt())
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setColorFilter(Color.WHITE)
+            setColorFilter(onPrimaryColor)
             setOnClickListener { sendFollowUp() }
         }
         sendButton.setImageBitmap(createSendIcon())
 
-        val sendParams = LinearLayout.LayoutParams(dp(44f).toInt(), dp(44f).toInt()).apply {
-            marginStart = dp(8f).toInt()
+        val sendParams = LinearLayout.LayoutParams(dp(48f).toInt(), dp(48f).toInt()).apply {
+            marginStart = dp(10f).toInt()
         }
         inputContainer.addView(sendButton, sendParams)
 
@@ -265,18 +320,18 @@ class AnswerPanelOverlay(
     private fun createActionButton(text: String, onClick: () -> Unit): TextView {
         return TextView(context).apply {
             this.text = text
-            setTextColor(secondaryTextColor)
+            setTextColor(onSurfaceVariantColor)
             textSize = 13f
             val bg = GradientDrawable().apply {
-                setColor(Color.parseColor("#1AFFFFFF"))
-                cornerRadius = dp(16f)
+                setColor(surfaceContainerHighColor)
+                cornerRadius = dp(20f)
             }
             background = bg
-            setPadding(dp(14f).toInt(), dp(6f).toInt(), dp(14f).toInt(), dp(6f).toInt())
+            setPadding(dp(18f).toInt(), dp(10f).toInt(), dp(18f).toInt(), dp(10f).toInt())
             val params = LinearLayout.LayoutParams(
-                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT,
             ).apply {
-                marginEnd = dp(8f).toInt()
+                marginEnd = dp(10f).toInt()
             }
             layoutParams = params
             setOnClickListener { onClick() }
@@ -288,7 +343,7 @@ class AnswerPanelOverlay(
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
+            color = onPrimaryColor
             style = Paint.Style.FILL
         }
         val path = Path().apply {
@@ -350,13 +405,15 @@ class AnswerPanelOverlay(
 
     private var currentThinkingText = StringBuilder()
     private var thinkingView: TextView? = null
+    private var thinkingContainer: LinearLayout? = null
     private var isThinkingPhase = false
+    private var thinkingExpanded = true
 
     private fun sendToLLM(loadingView: TextView) {
         val config = preferencesManager.getLLMConfig()
 
         if (config.apiKey.isBlank()) {
-            updateBubbleText(loadingView, "⚠️ 请先在设置中配置 API 密钥", isLoading = false)
+            updateBubbleText(loadingView, "请先在设置中配置 API 密钥", isLoading = false, isError = true)
             return
         }
 
@@ -364,14 +421,10 @@ class AnswerPanelOverlay(
         currentThinkingText.clear()
         isThinkingPhase = false
         thinkingView = null
+        thinkingContainer = null
+        thinkingExpanded = true
 
-        // Get tool definitions if function calling is supported
-        val tools = if (config.supportsVision || LLMConfig.modelSupportsVision(config.modelName)) {
-            // Most modern models support tools, so we always provide them
-            ToolRegistry.getToolDefinitions()
-        } else {
-            ToolRegistry.getToolDefinitions()
-        }
+        val tools = ToolRegistry.getToolDefinitions()
 
         scope.launch {
             if (config.stream) {
@@ -386,8 +439,10 @@ class AnswerPanelOverlay(
                         is LLMRepository.StreamEvent.Thinking -> {
                             if (!isThinkingPhase) {
                                 isThinkingPhase = true
-                                updateBubbleText(loadingView, "💭 正在深度思考...", isLoading = true)
-                                thinkingView = addThinkingBubble()
+                                updateBubbleText(loadingView, "正在深度思考...", isLoading = true)
+                                val (container, tv) = addThinkingBubble()
+                                thinkingContainer = container
+                                thinkingView = tv
                             }
                             currentThinkingText.append(event.text)
                             thinkingView?.let { tv ->
@@ -413,7 +468,7 @@ class AnswerPanelOverlay(
                             updateBubbleText(
                                 loadingView,
                                 currentStreamingText.toString(),
-                                isLoading = true
+                                isLoading = true,
                             )
                             scrollToBottom()
                         }
@@ -421,15 +476,12 @@ class AnswerPanelOverlay(
                             pendingToolCalls.add(event.toolCall)
                         }
                         is LLMRepository.StreamEvent.Completed -> {
-                            // If we have pending tool calls, handle them
                             if (pendingToolCalls.isNotEmpty()) {
-                                // First, finalize any text content
                                 val fullText = currentStreamingText.toString()
                                 if (fullText.isNotBlank()) {
                                     messages.add(ChatMessage.assistant(fullText))
                                     updateBubbleText(loadingView, fullText, isLoading = false)
                                 } else {
-                                    // Remove loading bubble
                                     handler.post {
                                         try {
                                             (loadingView.parent as? View)?.let { container ->
@@ -439,10 +491,8 @@ class AnswerPanelOverlay(
                                     }
                                 }
 
-                                // Process tool calls
                                 processToolCalls(pendingToolCalls.toList())
                             } else {
-                                // No tool calls, just show the text response
                                 val fullText = currentStreamingText.toString()
                                 if (fullText.isNotBlank()) {
                                     messages.add(ChatMessage.assistant(fullText))
@@ -461,8 +511,7 @@ class AnswerPanelOverlay(
                             }
                         }
                         is LLMRepository.StreamEvent.Error -> {
-                            val errorText = "❌ ${event.message}"
-                            updateBubbleText(loadingView, errorText, isLoading = false)
+                            updateBubbleText(loadingView, event.message, isLoading = false, isError = true)
                             scrollToBottom()
                         }
                     }
@@ -473,7 +522,6 @@ class AnswerPanelOverlay(
                 result.fold(
                     onSuccess = { response ->
                         if (response.toolCalls != null && response.toolCalls.isNotEmpty()) {
-                            // Handle tool calls for non-streaming
                             handleToolCalls(response.toolCalls, loadingView)
                         } else {
                             val text = response.content ?: ""
@@ -484,36 +532,30 @@ class AnswerPanelOverlay(
                         }
                     },
                     onFailure = { error ->
-                        updateBubbleText(loadingView, "❌ ${error.message}", isLoading = false)
+                        updateBubbleText(loadingView, error.message ?: "未知错误", isLoading = false, isError = true)
                         scrollToBottom()
-                    }
+                    },
                 )
             }
         }
     }
 
     private suspend fun processToolCalls(toolCalls: List<ToolCall>) {
-        // Add assistant message with tool calls
         messages.add(ChatMessage.assistantWithToolCalls(null, toolCalls))
 
         for (toolCall in toolCalls) {
             val argsDisplay = parseToolCallArgs(toolCall)
             val toolName = getToolDisplayName(toolCall.name)
 
-            // Show tool call with arguments
             addToolCallBubble(toolName, argsDisplay)
 
-            // Execute tool
             val result = toolExecutor.execute(toolCall)
 
-            // Add tool result to messages
             messages.add(ChatMessage.toolResult(toolCall.id, result.content))
 
-            // Show tool result
             addToolResultBubble(result.content, result.isError)
         }
 
-        // Continue conversation with tool results - create new loading bubble and send
         handler.post {
             val newLoadingView = addAssistantBubble("", isLoading = true)
             sendToLLM(newLoadingView)
@@ -521,7 +563,6 @@ class AnswerPanelOverlay(
     }
 
     private suspend fun handleToolCalls(toolCalls: List<ToolCall>, @Suppress("UNUSED_PARAMETER") loadingView: TextView) {
-        // Remove loading bubble
         handler.post {
             try {
                 (loadingView.parent as? View)?.let { container ->
@@ -530,7 +571,6 @@ class AnswerPanelOverlay(
             } catch (_: Exception) {}
         }
 
-        // Process tool calls
         processToolCalls(toolCalls)
     }
 
@@ -540,22 +580,22 @@ class AnswerPanelOverlay(
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.END
-            setPadding(dp(40f).toInt(), dp(4f).toInt(), 0, dp(8f).toInt())
+            setPadding(dp(48f).toInt(), dp(4f).toInt(), 0, dp(8f).toInt())
         }
 
         val bubble = TextView(context).apply {
             this.text = text
-            setTextColor(Color.WHITE)
+            setTextColor(onPrimaryColor)
             textSize = 14f
             val bg = GradientDrawable().apply {
-                setColor(userBubbleColor)
+                setColor(primaryColor)
                 cornerRadii = floatArrayOf(
-                    dp(16f), dp(16f), dp(4f), dp(4f),
-                    dp(16f), dp(16f), dp(16f), dp(16f)
+                    dp(20f), dp(20f), dp(6f), dp(6f),
+                    dp(20f), dp(20f), dp(20f), dp(20f),
                 )
             }
             background = bg
-            setPadding(dp(14f).toInt(), dp(10f).toInt(), dp(14f).toInt(), dp(10f).toInt())
+            setPadding(dp(16f).toInt(), dp(12f).toInt(), dp(16f).toInt(), dp(12f).toInt())
             maxLines = 8
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
@@ -569,7 +609,7 @@ class AnswerPanelOverlay(
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.END
-            setPadding(dp(40f).toInt(), dp(4f).toInt(), 0, dp(8f).toInt())
+            setPadding(dp(48f).toInt(), dp(4f).toInt(), 0, dp(8f).toInt())
         }
 
         val imagePreview = ImageView(context).apply {
@@ -577,21 +617,21 @@ class AnswerPanelOverlay(
             val scale = minOf(
                 maxSize.toFloat() / screenshotBitmap.width,
                 maxSize.toFloat() / screenshotBitmap.height,
-                1f
+                1f,
             )
             val scaledBitmap = Bitmap.createScaledBitmap(
                 screenshotBitmap,
                 (screenshotBitmap.width * scale).toInt(),
                 (screenshotBitmap.height * scale).toInt(),
-                true
+                true,
             )
             setImageBitmap(scaledBitmap)
             scaleType = ImageView.ScaleType.CENTER_CROP
             val bg = GradientDrawable().apply {
-                setColor(userBubbleColor)
+                setColor(primaryColor)
                 cornerRadii = floatArrayOf(
-                    dp(16f), dp(16f), dp(4f), dp(4f),
-                    dp(16f), dp(16f), dp(16f), dp(16f)
+                    dp(20f), dp(20f), dp(6f), dp(6f),
+                    dp(20f), dp(20f), dp(20f), dp(20f),
                 )
             }
             background = bg
@@ -600,7 +640,7 @@ class AnswerPanelOverlay(
 
         val imageParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
+            LinearLayout.LayoutParams.WRAP_CONTENT,
         ).apply {
             bottomMargin = dp(4f).toInt()
         }
@@ -608,18 +648,18 @@ class AnswerPanelOverlay(
 
         if (text.isNotBlank()) {
             val bubble = TextView(context).apply {
-                this.text = "📸 $text"
-                setTextColor(Color.WHITE)
+                this.text = text
+                setTextColor(onPrimaryColor)
                 textSize = 14f
                 val bg = GradientDrawable().apply {
-                    setColor(userBubbleColor)
+                    setColor(primaryColor)
                     cornerRadii = floatArrayOf(
-                        dp(16f), dp(16f), dp(4f), dp(4f),
-                        dp(16f), dp(16f), dp(16f), dp(16f)
+                        dp(6f), dp(6f), dp(6f), dp(6f),
+                        dp(20f), dp(20f), dp(20f), dp(20f),
                     )
                 }
                 background = bg
-                setPadding(dp(14f).toInt(), dp(10f).toInt(), dp(14f).toInt(), dp(10f).toInt())
+                setPadding(dp(16f).toInt(), dp(12f).toInt(), dp(16f).toInt(), dp(12f).toInt())
                 maxLines = 8
                 ellipsize = android.text.TextUtils.TruncateAt.END
             }
@@ -634,34 +674,34 @@ class AnswerPanelOverlay(
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.START
-            setPadding(0, dp(4f).toInt(), dp(40f).toInt(), dp(8f).toInt())
+            setPadding(0, dp(4f).toInt(), dp(48f).toInt(), dp(8f).toInt())
         }
 
         val label = TextView(context).apply {
-            this.text = "🤖 AI 助手"
-            setTextColor(secondaryTextColor)
+            this.text = "AI 助手"
+            setTextColor(onSurfaceVariantColor)
             textSize = 11f
             setPadding(dp(4f).toInt(), 0, 0, dp(4f).toInt())
         }
         container.addView(label)
 
         val bubble = TextView(context).apply {
-            setTextColor(textColor)
+            setTextColor(onSurfaceColor)
             textSize = 14f
             val bg = GradientDrawable().apply {
-                setColor(assistantBubbleColor)
+                setColor(surfaceContainerHighColor)
                 cornerRadii = floatArrayOf(
-                    dp(4f), dp(4f), dp(16f), dp(16f),
-                    dp(16f), dp(16f), dp(16f), dp(16f)
+                    dp(6f), dp(6f), dp(20f), dp(20f),
+                    dp(20f), dp(20f), dp(20f), dp(20f),
                 )
             }
             background = bg
-            setPadding(dp(14f).toInt(), dp(10f).toInt(), dp(14f).toInt(), dp(10f).toInt())
+            setPadding(dp(16f).toInt(), dp(12f).toInt(), dp(16f).toInt(), dp(12f).toInt())
             movementMethod = ScrollingMovementMethod.getInstance()
-            setLineSpacing(dp(3f), 1f)
+            setLineSpacing(dp(4f), 1f)
 
             if (isLoading) {
-                this.text = if (text.isEmpty()) "●●●" else text
+                this.text = if (text.isEmpty()) createLoadingDots() else text
             } else {
                 markwon.setMarkdown(this, text)
             }
@@ -676,31 +716,78 @@ class AnswerPanelOverlay(
         return bubble
     }
 
-    private fun addThinkingBubble(): TextView {
+    private fun createLoadingDots(): CharSequence {
+        return "⬤  ⬤  ⬤"
+    }
+
+    private fun addThinkingBubble(): Pair<LinearLayout, TextView> {
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.START
-            setPadding(0, dp(2f).toInt(), dp(40f).toInt(), dp(4f).toInt())
+            setPadding(0, dp(2f).toInt(), dp(48f).toInt(), dp(6f).toInt())
+        }
+
+        // Clickable header for expand/collapse
+        val headerRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8f).toInt(), dp(6f).toInt(), dp(8f).toInt(), dp(4f).toInt())
+            val bg = GradientDrawable().apply {
+                setColor(tertiaryContainerColor)
+                cornerRadii = floatArrayOf(
+                    dp(14f), dp(14f), dp(14f), dp(14f),
+                    0f, 0f, 0f, 0f,
+                )
+            }
+            background = bg
+            setOnClickListener {
+                thinkingExpanded = !thinkingExpanded
+                thinkingView?.let { tv ->
+                    handler.post {
+                        if (thinkingExpanded) {
+                            tv.maxLines = Int.MAX_VALUE
+                            tv.ellipsize = null
+                        } else {
+                            tv.maxLines = 3
+                            tv.ellipsize = android.text.TextUtils.TruncateAt.END
+                        }
+                    }
+                }
+            }
         }
 
         val label = TextView(context).apply {
-            this.text = "💭 思考过程"
-            setTextColor(Color.parseColor("#8888AA"))
-            textSize = 10f
-            setPadding(dp(4f).toInt(), 0, 0, dp(2f).toInt())
+            text = "思考过程"
+            setTextColor(tertiaryColor)
+            textSize = 11f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            setPadding(dp(4f).toInt(), 0, 0, 0)
         }
-        container.addView(label)
+        headerRow.addView(label, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+
+        val expandIndicator = TextView(context).apply {
+            text = "▲"
+            setTextColor(tertiaryColor)
+            textSize = 10f
+            tag = "expand_indicator"
+        }
+        headerRow.addView(expandIndicator)
+
+        container.addView(headerRow)
 
         val bubble = TextView(context).apply {
-            setTextColor(Color.parseColor("#7777AA"))
+            setTextColor(onSurfaceVariantColor)
             textSize = 12f
             setTypeface(null, Typeface.ITALIC)
             val bg = GradientDrawable().apply {
-                setColor(Color.parseColor("#1A6C63FF"))
-                cornerRadius = dp(12f)
+                setColor(tertiaryContainerColor.copy(alpha = 128))
+                cornerRadii = floatArrayOf(
+                    0f, 0f, dp(14f), dp(14f),
+                    dp(14f), dp(14f), dp(14f), dp(14f),
+                )
             }
             background = bg
-            setPadding(dp(12f).toInt(), dp(8f).toInt(), dp(12f).toInt(), dp(8f).toInt())
+            setPadding(dp(14f).toInt(), dp(8f).toInt(), dp(14f).toInt(), dp(10f).toInt())
             setLineSpacing(dp(2f), 1f)
         }
 
@@ -708,16 +795,25 @@ class AnswerPanelOverlay(
         messagesContainer.addView(container)
         scrollToBottom()
 
-        return bubble
+        return Pair(container, bubble)
+    }
+
+    private fun Int.copy(alpha: Int): Int {
+        return Color.argb(
+            alpha,
+            Color.red(this),
+            Color.green(this),
+            Color.blue(this),
+        )
     }
 
     private fun getToolDisplayName(toolName: String): String {
         return when (toolName) {
-            "get_current_datetime" -> "🕐 获取日期时间"
-            "calculate" -> "🔢 计算表达式"
-            "evaluate_js" -> "💻 执行计算"
-            "convert_unit" -> "📐 单位转换"
-            else -> "🔧 $toolName"
+            "get_current_datetime" -> "获取日期时间"
+            "calculate" -> "计算表达式"
+            "evaluate_js" -> "执行计算"
+            "convert_unit" -> "单位转换"
+            else -> toolName
         }
     }
 
@@ -751,36 +847,40 @@ class AnswerPanelOverlay(
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.START
-            setPadding(0, dp(2f).toInt(), dp(40f).toInt(), dp(4f).toInt())
+            setPadding(0, dp(2f).toInt(), dp(48f).toInt(), dp(4f).toInt())
         }
 
-        // Tool call header
         val header = TextView(context).apply {
-            this.text = "⚙️ 调用工具: $toolName"
-            setTextColor(Color.parseColor("#88CC88"))
+            text = "调用工具: $toolName"
+            setTextColor(Color.parseColor("#66BB6A"))
             textSize = 13f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             val bg = GradientDrawable().apply {
-                setColor(Color.parseColor("#1A2A4A2A"))
-                cornerRadii = floatArrayOf(dp(12f), dp(12f), 0f, 0f, 0f, 0f, dp(12f), dp(12f))
+                setColor(Color.parseColor("#1A4CAF50"))
+                cornerRadii = floatArrayOf(
+                    dp(14f), dp(14f), 0f, 0f,
+                    0f, 0f, dp(14f), dp(14f),
+                )
             }
             background = bg
-            setPadding(dp(14f).toInt(), dp(10f).toInt(), dp(14f).toInt(), dp(6f).toInt())
+            setPadding(dp(16f).toInt(), dp(12f).toInt(), dp(16f).toInt(), dp(6f).toInt())
         }
         container.addView(header)
 
-        // Tool call arguments
         if (args.isNotBlank()) {
             val argsView = TextView(context).apply {
-                this.text = args
-                setTextColor(Color.parseColor("#AACCBB"))
+                text = args
+                setTextColor(Color.parseColor("#A5D6A7"))
                 textSize = 12f
                 val bg = GradientDrawable().apply {
-                    setColor(Color.parseColor("#152A4A2A"))
-                    cornerRadii = floatArrayOf(0f, 0f, dp(12f), dp(12f), dp(12f), dp(12f), 0f, 0f)
+                    setColor(Color.parseColor("#154CAF50"))
+                    cornerRadii = floatArrayOf(
+                        0f, 0f, dp(14f), dp(14f),
+                        dp(14f), dp(14f), 0f, 0f,
+                    )
                 }
                 background = bg
-                setPadding(dp(14f).toInt(), dp(4f).toInt(), dp(14f).toInt(), dp(10f).toInt())
+                setPadding(dp(16f).toInt(), dp(4f).toInt(), dp(16f).toInt(), dp(10f).toInt())
                 setLineSpacing(dp(2f), 1f)
             }
             container.addView(argsView)
@@ -794,38 +894,45 @@ class AnswerPanelOverlay(
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.START
-            setPadding(0, dp(2f).toInt(), dp(40f).toInt(), dp(4f).toInt())
+            setPadding(0, dp(2f).toInt(), dp(48f).toInt(), dp(4f).toInt())
         }
 
-        val headerText = if (isError) "⚠️ 工具执行失败" else "✅ 工具返回结果"
-        val headerColor = if (isError) "#CC8888" else "#88CC88"
-        val bgColor = if (isError) "#1A4A2A2A" else "#1A2A4A2A"
+        val headerText = if (isError) "工具执行失败" else "工具返回结果"
+        val headerColor = if (isError) errorColor else Color.parseColor("#66BB6A")
+        val bgColor = if (isError) errorContainerColor else Color.parseColor("#1A4CAF50")
+        val contentBgColor = if (isError) errorContainerColor.copy(alpha = 0x10) else Color.parseColor("#154CAF50")
+        val contentColor = if (isError) errorColor else Color.parseColor("#A5D6A7")
 
         val header = TextView(context).apply {
-            this.text = headerText
-            setTextColor(Color.parseColor(headerColor))
+            text = headerText
+            setTextColor(headerColor)
             textSize = 12f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             val bg = GradientDrawable().apply {
-                setColor(Color.parseColor(bgColor))
-                cornerRadii = floatArrayOf(dp(12f), dp(12f), 0f, 0f, 0f, 0f, dp(12f), dp(12f))
+                setColor(bgColor)
+                cornerRadii = floatArrayOf(
+                    dp(14f), dp(14f), 0f, 0f,
+                    0f, 0f, dp(14f), dp(14f),
+                )
             }
             background = bg
-            setPadding(dp(14f).toInt(), dp(10f).toInt(), dp(14f).toInt(), dp(4f).toInt())
+            setPadding(dp(16f).toInt(), dp(10f).toInt(), dp(16f).toInt(), dp(4f).toInt())
         }
         container.addView(header)
 
-        val resultBgColor = if (isError) "#154A2A2A" else "#152A4A2A"
         val resultView = TextView(context).apply {
-            this.text = content
-            setTextColor(if (isError) Color.parseColor("#DDAAAA") else Color.parseColor("#BBDDCC"))
+            text = content
+            setTextColor(contentColor)
             textSize = 12f
             val bg = GradientDrawable().apply {
-                setColor(Color.parseColor(resultBgColor))
-                cornerRadii = floatArrayOf(0f, 0f, dp(12f), dp(12f), dp(12f), dp(12f), 0f, 0f)
+                setColor(contentBgColor)
+                cornerRadii = floatArrayOf(
+                    0f, 0f, dp(14f), dp(14f),
+                    dp(14f), dp(14f), 0f, 0f,
+                )
             }
             background = bg
-            setPadding(dp(14f).toInt(), dp(4f).toInt(), dp(14f).toInt(), dp(10f).toInt())
+            setPadding(dp(16f).toInt(), dp(4f).toInt(), dp(16f).toInt(), dp(10f).toInt())
             setLineSpacing(dp(2f), 1f)
         }
         container.addView(resultView)
@@ -834,18 +941,19 @@ class AnswerPanelOverlay(
         scrollToBottom()
     }
 
-    private fun updateBubbleText(bubble: TextView, text: String, isLoading: Boolean) {
+    private fun updateBubbleText(bubble: TextView, text: String, isLoading: Boolean, isError: Boolean = false) {
         handler.post {
             if (isLoading && text.isNotEmpty()) {
-                bubble.text = text + " ▎"
+                bubble.text = "$text ▎"
             } else if (!isLoading && text.isNotEmpty()) {
-                if (text.startsWith("❌") || text.startsWith("⚠️")) {
+                if (isError) {
+                    bubble.setTextColor(errorColor)
                     bubble.text = text
                 } else {
                     markwon.setMarkdown(bubble, text)
                 }
             } else {
-                bubble.text = "●●●"
+                bubble.text = createLoadingDots()
             }
         }
     }
@@ -896,7 +1004,7 @@ class AnswerPanelOverlay(
             try {
                 val screenshotFile = java.io.File(
                     context.filesDir,
-                    "screenshots/screenshot_${System.currentTimeMillis()}.png"
+                    "screenshots/screenshot_${System.currentTimeMillis()}.png",
                 )
                 screenshotFile.parentFile?.mkdirs()
                 java.io.FileOutputStream(screenshotFile).use { fos ->
@@ -912,7 +1020,7 @@ class AnswerPanelOverlay(
                     screenshotPath = screenshotFile.absolutePath,
                     recognizedText = if (sendDirectImage) "[图片] $recognizedText" else recognizedText,
                     conversations = messages.toList(),
-                    previewText = if (sendDirectImage) "📸 $preview" else preview
+                    previewText = if (sendDirectImage) " $preview" else preview,
                 )
 
                 historyId = database.historyDao().insertHistory(history)
@@ -931,7 +1039,7 @@ class AnswerPanelOverlay(
             panelContainer.animate()
                 .translationY(0f)
                 .setDuration(400)
-                .setInterpolator(DecelerateInterpolator())
+                .setInterpolator(DecelerateInterpolator(1.5f))
                 .start()
         }
 
@@ -944,7 +1052,7 @@ class AnswerPanelOverlay(
         panelContainer.animate()
             .translationY(parentHeight.toFloat())
             .setDuration(300)
-            .setInterpolator(DecelerateInterpolator())
+            .setInterpolator(DecelerateInterpolator(1.5f))
             .withEndAction {
                 onClose?.invoke()
             }

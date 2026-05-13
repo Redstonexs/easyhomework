@@ -20,8 +20,8 @@ import androidx.navigation.compose.rememberNavController
 import com.easyhomework.app.service.FloatingBallService
 import com.easyhomework.app.ui.screens.HistoryScreen
 import com.easyhomework.app.ui.screens.SettingsScreen
-import com.easyhomework.app.ui.theme.DarkBackground
 import com.easyhomework.app.ui.theme.EasyHomeworkTheme
+import androidx.compose.material3.MaterialTheme
 import com.easyhomework.app.util.PreferencesManager
 import com.easyhomework.app.viewmodel.HistoryViewModel
 import com.easyhomework.app.viewmodel.SettingsViewModel
@@ -59,7 +59,7 @@ class MainActivity : ComponentActivity() {
             EasyHomeworkTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = DarkBackground
+                    color = MaterialTheme.colorScheme.background
                 ) {
                     AppNavigation(
                         onToggleService = { enabled ->

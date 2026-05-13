@@ -1,16 +1,82 @@
 package com.easyhomework.app.ui.screens
 
-import androidx.compose.animation.*
-import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Circle
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.DataUsage
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Label
+import androidx.compose.material.icons.outlined.Minimize
+import androidx.compose.material.icons.outlined.Route
+import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,10 +91,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.LLMConfig
-import com.easyhomework.app.model.ModelInfo
 import com.easyhomework.app.model.ThinkingDepth
 import com.easyhomework.app.service.FloatingBallService
-import com.easyhomework.app.ui.theme.*
+import com.easyhomework.app.ui.theme.AccentCyan
+import com.easyhomework.app.ui.theme.AccentOrange
+import com.easyhomework.app.ui.theme.PrimaryBlue
+import com.easyhomework.app.ui.theme.PrimaryPurple
 import com.easyhomework.app.viewmodel.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,7 +105,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     isServiceRunning: Boolean,
     onToggleService: (Boolean) -> Unit,
-    onNavigateToHistory: () -> Unit
+    onNavigateToHistory: () -> Unit,
 ) {
     val config by viewModel.config.collectAsState()
     val providerConfigs by viewModel.providerConfigs.collectAsState()
@@ -62,13 +130,13 @@ fun SettingsScreen(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = DarkBackground
+        containerColor = MaterialTheme.colorScheme.background,
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberScrollState()),
         ) {
             // ---- Header ----
             Box(
@@ -76,38 +144,38 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(PrimaryPurple.copy(alpha = 0.3f), DarkBackground)
-                        )
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                MaterialTheme.colorScheme.background,
+                            ),
+                        ),
                     )
-                    .padding(horizontal = 24.dp, vertical = 32.dp)
+                    .padding(horizontal = 24.dp, vertical = 32.dp),
             ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(listOf(PrimaryPurple, PrimaryBlue))
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("AI", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                "EasyHomework",
-                                style = MaterialTheme.typography.headlineMedium,
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                "AI 搜题助手",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextSecondary
-                            )
-                        }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(listOf(PrimaryPurple, PrimaryBlue)),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("AI", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            "EasyHomework",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            "AI 搜题助手",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -116,26 +184,34 @@ fun SettingsScreen(
             SettingsCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(
-                                if (serviceEnabled) Brush.linearGradient(listOf(PrimaryPurple, PrimaryBlue))
-                                else Brush.linearGradient(listOf(DarkSurfaceVariant, DarkSurfaceVariant))
+                                if (serviceEnabled)
+                                    Brush.linearGradient(listOf(PrimaryPurple, PrimaryBlue))
+                                else
+                                    Brush.linearGradient(
+                                        listOf(
+                                            MaterialTheme.colorScheme.surfaceVariant,
+                                            MaterialTheme.colorScheme.surfaceVariant,
+                                        ),
+                                    ),
                             ),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.Filled.Circle, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("悬浮球", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                        Text("悬浮球", style = MaterialTheme.typography.titleMedium)
                         Text(
                             if (serviceEnabled) "点击截屏搜题 · 长按关闭" else "开启后可在任何应用中搜题",
-                            style = MaterialTheme.typography.bodySmall, color = TextSecondary
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Switch(
@@ -144,10 +220,6 @@ fun SettingsScreen(
                             serviceEnabled = enabled
                             onToggleService(enabled)
                         },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White, checkedTrackColor = PrimaryPurple,
-                            uncheckedThumbColor = TextSecondary, uncheckedTrackColor = DarkSurfaceVariant
-                        )
                     )
                 }
             }
@@ -156,23 +228,23 @@ fun SettingsScreen(
             SettingsCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     SettingsIcon(Icons.Outlined.Minimize, AccentCyan)
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("迷你悬浮球", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                        Text("更小更透明，减少遮挡", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Text("迷你悬浮球", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "更小更透明，减少遮挡",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     Switch(
                         checked = config.miniBall,
                         onCheckedChange = { mini ->
                             viewModel.updateConfig(config.copy(miniBall = mini))
                         },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White, checkedTrackColor = PrimaryPurple,
-                            uncheckedThumbColor = TextSecondary, uncheckedTrackColor = DarkSurfaceVariant
-                        )
                     )
                 }
             }
@@ -181,19 +253,23 @@ fun SettingsScreen(
             SettingsCard(
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .clickable { onNavigateToHistory() }
+                    .clickable { onNavigateToHistory() },
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     SettingsIcon(Icons.Outlined.History, AccentCyan)
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("搜题历史", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                        Text("查看之前的搜题记录", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Text("搜题历史", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "查看之前的搜题记录",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = TextTertiary)
+                    Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
                 }
             }
 
@@ -202,15 +278,13 @@ fun SettingsScreen(
 
             SettingsCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    // Provider tabs
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        // Provider chips (scrollable)
                         Row(
                             modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             providerConfigs.forEach { provider ->
                                 val isActive = provider.id == activeProviderId
@@ -221,48 +295,39 @@ fun SettingsScreen(
                                         Text(
                                             provider.name.ifBlank { "未命名" },
                                             maxLines = 1,
-                                            fontSize = 13.sp
+                                            fontSize = 13.sp,
                                         )
                                     },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = PrimaryPurple.copy(alpha = 0.3f),
-                                        selectedLabelColor = PrimaryPurple,
-                                        containerColor = DarkSurfaceVariant,
-                                        labelColor = TextSecondary
-                                    )
                                 )
                             }
                         }
 
-                        // Add provider button
                         IconButton(
                             onClick = { viewModel.addNewProvider() },
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(36.dp),
                         ) {
                             Icon(
                                 Icons.Filled.Add,
                                 contentDescription = "添加提供商",
-                                tint = PrimaryPurple,
-                                modifier = Modifier.size(20.dp)
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp),
                             )
                         }
 
-                        // More options
                         Box {
                             IconButton(
                                 onClick = { showProviderMenu = true },
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(36.dp),
                             ) {
                                 Icon(
                                     Icons.Filled.MoreVert,
                                     contentDescription = "更多选项",
-                                    tint = TextSecondary,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(18.dp),
                                 )
                             }
                             DropdownMenu(
                                 expanded = showProviderMenu,
-                                onDismissRequest = { showProviderMenu = false }
+                                onDismissRequest = { showProviderMenu = false },
                             ) {
                                 DropdownMenuItem(
                                     text = { Text("删除当前配置") },
@@ -271,8 +336,8 @@ fun SettingsScreen(
                                         showProviderMenu = false
                                     },
                                     leadingIcon = {
-                                        Icon(Icons.Filled.Delete, contentDescription = null, tint = Color(0xFFFF5252))
-                                    }
+                                        Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                                    },
                                 )
                             }
                         }
@@ -280,27 +345,16 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Provider name
                     OutlinedTextField(
                         value = config.name,
                         onValueChange = { viewModel.updateProviderName(config.id, it) },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("配置名称", color = TextSecondary) },
+                        label = { Text("配置名称") },
                         leadingIcon = {
                             @Suppress("DEPRECATION")
-                            Icon(Icons.Outlined.Label, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Outlined.Label, contentDescription = null, modifier = Modifier.size(20.dp))
                         },
                         singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PrimaryPurple,
-                            unfocusedBorderColor = DarkSurfaceVariant,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary,
-                            cursorColor = PrimaryPurple,
-                            focusedLabelColor = PrimaryPurple,
-                            unfocusedLabelColor = TextSecondary
-                        ),
-                        shape = RoundedCornerShape(12.dp)
                     )
                 }
             }
@@ -310,7 +364,11 @@ fun SettingsScreen(
 
             SettingsCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text("API 类型", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    Text(
+                        "API 类型",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ApiType.entries.forEach { type ->
@@ -324,41 +382,32 @@ fun SettingsScreen(
                                     viewModel.updateConfig(config.copy(apiType = type, apiPath = newPath))
                                 },
                                 label = { Text(type.displayName) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = PrimaryPurple.copy(alpha = 0.3f),
-                                    selectedLabelColor = PrimaryPurple,
-                                    containerColor = DarkSurfaceVariant,
-                                    labelColor = TextSecondary
-                                )
                             )
                         }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // API Endpoint
                     SettingsTextField(
                         label = "API 端点",
                         value = config.apiEndpoint,
                         onValueChange = { viewModel.updateConfig(config.copy(apiEndpoint = it)) },
                         placeholder = if (config.apiType == ApiType.OPENAI) "https://api.openai.com" else "https://api.anthropic.com",
-                        icon = Icons.Outlined.Cloud
+                        icon = Icons.Outlined.Cloud,
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // API Path
                     SettingsTextField(
                         label = "API 路径",
                         value = config.apiPath,
                         onValueChange = { viewModel.updateConfig(config.copy(apiPath = it)) },
                         placeholder = if (config.apiType == ApiType.OPENAI) "/v1/chat/completions" else "/v1/messages",
-                        icon = Icons.Outlined.Route
+                        icon = Icons.Outlined.Route,
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // API Key
                     SettingsTextField(
                         label = "API 密钥",
                         value = config.apiKey,
@@ -371,15 +420,13 @@ fun SettingsScreen(
                                 Icon(
                                     if (showApiKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                                     contentDescription = "Toggle visibility",
-                                    tint = TextSecondary
                                 )
                             }
-                        }
+                        },
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Model Name + Fetch button
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.weight(1f)) {
                             SettingsTextField(
@@ -389,11 +436,10 @@ fun SettingsScreen(
                                     viewModel.updateConfig(config.copy(modelName = it))
                                 },
                                 placeholder = if (config.apiType == ApiType.OPENAI) "gpt-4o" else "claude-sonnet-4-20250514",
-                                icon = Icons.Outlined.SmartToy
+                                icon = Icons.Outlined.SmartToy,
                             )
                         }
                         Spacer(modifier = Modifier.width(8.dp))
-                        // Fetch models button
                         Box {
                             OutlinedButton(
                                 onClick = {
@@ -401,33 +447,27 @@ fun SettingsScreen(
                                     showModelDropdown = true
                                 },
                                 modifier = Modifier.height(56.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryPurple),
-                                border = BorderStroke(1.dp, PrimaryPurple.copy(alpha = 0.5f)),
-                                enabled = !isFetchingModels
+                                enabled = !isFetchingModels,
                             ) {
                                 if (isFetchingModels) {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size(18.dp),
-                                        color = PrimaryPurple,
-                                        strokeWidth = 2.dp
+                                        strokeWidth = 2.dp,
                                     )
                                 } else {
                                     Icon(
                                         Icons.Filled.Refresh,
                                         contentDescription = "获取模型",
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(20.dp),
                                     )
                                 }
                             }
 
-                            // Model dropdown with vision model indicators
                             DropdownMenu(
                                 expanded = showModelDropdown && availableModels.isNotEmpty(),
                                 onDismissRequest = { showModelDropdown = false },
-                                modifier = Modifier.heightIn(max = 400.dp).widthIn(min = 280.dp)
+                                modifier = Modifier.heightIn(max = 400.dp).widthIn(min = 280.dp),
                             ) {
-                                // Vision models section header
                                 val visionModels = availableModels.filter { it.supportsVision }
                                 val otherModels = availableModels.filter { !it.supportsVision }
 
@@ -435,14 +475,14 @@ fun SettingsScreen(
                                     DropdownMenuItem(
                                         text = {
                                             Text(
-                                                "📸 支持图像输入",
-                                                color = AccentCyan,
+                                                "支持图像输入",
+                                                color = MaterialTheme.colorScheme.tertiary,
                                                 fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold
+                                                fontWeight = FontWeight.Bold,
                                             )
                                         },
                                         onClick = {},
-                                        enabled = false
+                                        enabled = false,
                                     )
                                     visionModels.forEach { model ->
                                         DropdownMenuItem(
@@ -450,14 +490,14 @@ fun SettingsScreen(
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Text(
                                                         model.id,
-                                                        color = if (model.id == config.modelName) PrimaryPurple else TextPrimary,
-                                                        fontSize = 14.sp
+                                                        color = if (model.id == config.modelName)
+                                                            MaterialTheme.colorScheme.primary
+                                                        else
+                                                            MaterialTheme.colorScheme.onSurface,
+                                                        fontSize = 14.sp,
                                                     )
                                                     Spacer(modifier = Modifier.width(6.dp))
-                                                    Text(
-                                                        "👁️",
-                                                        fontSize = 10.sp
-                                                    )
+                                                    Text("👁️", fontSize = 10.sp)
                                                 }
                                             },
                                             onClick = {
@@ -465,35 +505,32 @@ fun SettingsScreen(
                                                     model.id,
                                                     model.supportsVision,
                                                     model.supportsFunctionCalling,
-                                                    model.supportsThinking
+                                                    model.supportsThinking,
                                                 )
                                                 showModelDropdown = false
                                             },
                                             trailingIcon = {
                                                 if (model.id == config.modelName) {
-                                                    Icon(Icons.Filled.Check, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(16.dp))
+                                                    Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                                                 }
-                                            }
+                                            },
                                         )
                                     }
                                 }
 
                                 if (otherModels.isNotEmpty() && visionModels.isNotEmpty()) {
-                                    HorizontalDivider(
-                                        color = DarkSurfaceVariant,
-                                        modifier = Modifier.padding(vertical = 4.dp)
-                                    )
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                                     DropdownMenuItem(
                                         text = {
                                             Text(
                                                 "其他模型",
-                                                color = TextTertiary,
+                                                color = MaterialTheme.colorScheme.outline,
                                                 fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold
+                                                fontWeight = FontWeight.Bold,
                                             )
                                         },
                                         onClick = {},
-                                        enabled = false
+                                        enabled = false,
                                     )
                                 }
 
@@ -502,8 +539,11 @@ fun SettingsScreen(
                                         text = {
                                             Text(
                                                 model.id,
-                                                color = if (model.id == config.modelName) PrimaryPurple else TextPrimary,
-                                                fontSize = 14.sp
+                                                color = if (model.id == config.modelName)
+                                                    MaterialTheme.colorScheme.primary
+                                                else
+                                                    MaterialTheme.colorScheme.onSurface,
+                                                fontSize = 14.sp,
                                             )
                                         },
                                         onClick = {
@@ -511,37 +551,39 @@ fun SettingsScreen(
                                                 model.id,
                                                 model.supportsVision,
                                                 model.supportsFunctionCalling,
-                                                model.supportsThinking
+                                                model.supportsThinking,
                                             )
                                             showModelDropdown = false
                                         },
                                         trailingIcon = {
                                             if (model.id == config.modelName) {
-                                                Icon(Icons.Filled.Check, contentDescription = null, tint = PrimaryPurple, modifier = Modifier.size(16.dp))
+                                                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                                             }
-                                        }
+                                        },
                                     )
                                 }
                             }
                         }
                     }
 
-                    // Vision model indicator
                     if (config.supportsVision || LLMConfig.modelSupportsVision(config.modelName)) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(AccentCyan.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                .background(
+                                    MaterialTheme.colorScheme.tertiaryContainer,
+                                    RoundedCornerShape(8.dp),
+                                )
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text("👁️", fontSize = 16.sp)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 "该模型支持图像输入，截屏后可直接发送图片",
                                 fontSize = 12.sp,
-                                color = AccentCyan
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
                             )
                         }
                     }
@@ -559,17 +601,7 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 3,
                         maxLines = 6,
-                        label = { Text("自定义提示词", color = TextSecondary) },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PrimaryPurple,
-                            unfocusedBorderColor = DarkSurfaceVariant,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary,
-                            cursorColor = PrimaryPurple,
-                            focusedLabelColor = PrimaryPurple,
-                            unfocusedLabelColor = TextSecondary
-                        ),
-                        shape = RoundedCornerShape(12.dp)
+                        label = { Text("自定义提示词") },
                     )
                 }
             }
@@ -578,31 +610,32 @@ fun SettingsScreen(
             SettingsCard(
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .clickable { expandAdvanced = !expandAdvanced }
+                    .clickable { expandAdvanced = !expandAdvanced },
             ) {
                 Column {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         SettingsIcon(Icons.Outlined.Tune, AccentOrange)
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            "高级设置", style = MaterialTheme.typography.titleMedium,
-                            color = TextPrimary, modifier = Modifier.weight(1f)
+                            "高级设置",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f),
                         )
                         Icon(
                             if (expandAdvanced) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                            contentDescription = null, tint = TextTertiary
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.outline,
                         )
                     }
 
                     AnimatedVisibility(visible = expandAdvanced) {
                         Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp)) {
-                            // Temperature
                             Text(
                                 "Temperature: ${String.format("%.1f", config.temperature)}",
-                                style = MaterialTheme.typography.bodyMedium, color = TextPrimary
+                                style = MaterialTheme.typography.bodyMedium,
                             )
                             Slider(
                                 value = config.temperature,
@@ -611,16 +644,10 @@ fun SettingsScreen(
                                 },
                                 valueRange = 0f..2f,
                                 steps = 19,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = PrimaryPurple,
-                                    activeTrackColor = PrimaryPurple,
-                                    inactiveTrackColor = DarkSurfaceVariant
-                                )
                             )
 
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            // Max Tokens
                             SettingsTextField(
                                 label = "最大 Tokens",
                                 value = config.maxTokens.toString(),
@@ -631,95 +658,80 @@ fun SettingsScreen(
                                 },
                                 placeholder = "2048",
                                 icon = Icons.Outlined.DataUsage,
-                                keyboardType = KeyboardType.Number
+                                keyboardType = KeyboardType.Number,
                             )
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            // Stream toggle
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("流式输出", style = MaterialTheme.typography.bodyMedium, color = TextPrimary, modifier = Modifier.weight(1f))
+                                Text("流式输出", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                                 Switch(
                                     checked = config.stream,
                                     onCheckedChange = { viewModel.updateConfig(config.copy(stream = it)) },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Color.White, checkedTrackColor = PrimaryPurple,
-                                        uncheckedThumbColor = TextSecondary, uncheckedTrackColor = DarkSurfaceVariant
-                                    )
                                 )
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            // Vision model toggle
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("支持图像输入", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
+                                    Text("支持图像输入", style = MaterialTheme.typography.bodyMedium)
                                     Text(
                                         "截屏后可直接发送图片给模型",
-                                        style = MaterialTheme.typography.bodySmall, color = TextTertiary
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.outline,
                                     )
                                 }
                                 Switch(
                                     checked = config.supportsVision,
                                     onCheckedChange = { viewModel.updateConfig(config.copy(supportsVision = it)) },
                                     colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Color.White, checkedTrackColor = AccentCyan,
-                                        uncheckedThumbColor = TextSecondary, uncheckedTrackColor = DarkSurfaceVariant
-                                    )
+                                        checkedTrackColor = MaterialTheme.colorScheme.tertiary,
+                                    ),
                                 )
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            // ---- Thinking Mode ----
-                            HorizontalDivider(color = DarkSurfaceVariant, thickness = 1.dp)
+                            HorizontalDivider()
                             Spacer(modifier = Modifier.height(16.dp))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("思考模式", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
+                                    Text("思考模式", style = MaterialTheme.typography.bodyMedium)
                                     Text(
                                         when (config.apiType) {
                                             ApiType.OPENAI -> "支持 o1/o3/DeepSeek-R1 等模型"
                                             ApiType.ANTHROPIC -> "Claude Extended Thinking"
                                         },
-                                        style = MaterialTheme.typography.bodySmall, color = TextTertiary
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.outline,
                                     )
                                 }
                                 Switch(
                                     checked = config.thinkingEnabled,
                                     onCheckedChange = { viewModel.updateConfig(config.copy(thinkingEnabled = it)) },
                                     colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Color.White, checkedTrackColor = AccentCyan,
-                                        uncheckedThumbColor = TextSecondary, uncheckedTrackColor = DarkSurfaceVariant
-                                    )
+                                        checkedTrackColor = MaterialTheme.colorScheme.tertiary,
+                                    ),
                                 )
                             }
 
-                            // Thinking depth selector
-                            AnimatedVisibility(
-                                visible = config.thinkingEnabled
-                            ) {
+                            AnimatedVisibility(visible = config.thinkingEnabled) {
                                 Column {
                                     Spacer(modifier = Modifier.height(12.dp))
-                                    Text(
-                                        "思考深度",
-                                        style = MaterialTheme.typography.bodyMedium, color = TextPrimary
-                                    )
+                                    Text("思考深度", style = MaterialTheme.typography.bodyMedium)
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         ThinkingDepth.entries.forEach { depth ->
                                             val isSelected = config.thinkingDepth == depth
                                             FilterChip(
@@ -732,7 +744,7 @@ fun SettingsScreen(
                                                         Text(
                                                             depth.displayName,
                                                             fontSize = 14.sp,
-                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                                         )
                                                         if (depth != ThinkingDepth.NONE) {
                                                             Text(
@@ -741,22 +753,19 @@ fun SettingsScreen(
                                                                     ApiType.ANTHROPIC -> "${depth.budgetTokens / 1024}K"
                                                                 },
                                                                 fontSize = 10.sp,
-                                                                color = TextTertiary
+                                                                color = MaterialTheme.colorScheme.outline,
                                                             )
                                                         }
                                                     }
                                                 },
                                                 colors = FilterChipDefaults.filterChipColors(
-                                                    selectedContainerColor = AccentCyan.copy(alpha = 0.3f),
-                                                    selectedLabelColor = AccentCyan,
-                                                    containerColor = DarkSurfaceVariant,
-                                                    labelColor = TextSecondary
-                                                )
+                                                    selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                                    selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                ),
                                             )
                                         }
                                     }
 
-                                    // Description
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
                                         when (config.thinkingDepth) {
@@ -767,7 +776,7 @@ fun SettingsScreen(
                                             ThinkingDepth.XHIGH -> "极深思考，适合竞赛难题"
                                         },
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = TextTertiary
+                                        color = MaterialTheme.colorScheme.outline,
                                     )
                                 }
                             }
@@ -795,16 +804,16 @@ fun SettingsScreen(
                     .height(56.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                contentPadding = PaddingValues()
+                contentPadding = PaddingValues(),
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
                             Brush.linearGradient(listOf(PrimaryPurple, PrimaryBlue)),
-                            shape = RoundedCornerShape(16.dp)
+                            shape = RoundedCornerShape(16.dp),
                         ),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text("保存设置", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                 }
@@ -814,13 +823,15 @@ fun SettingsScreen(
 
             Text(
                 "EasyHomework v1.0.0",
-                style = MaterialTheme.typography.bodySmall, color = TextTertiary,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
             )
             Text(
                 "支持 OpenAI 兼容 API 及 Anthropic Claude API",
-                style = MaterialTheme.typography.bodySmall, color = TextTertiary,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -833,8 +844,10 @@ fun SettingsScreen(
 @Composable
 fun SectionHeader(title: String) {
     Text(
-        title, style = MaterialTheme.typography.labelLarge, color = PrimaryPurple,
-        modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 8.dp)
+        title,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 8.dp),
     )
 }
 
@@ -842,16 +855,19 @@ fun SectionHeader(title: String) {
 fun SettingsCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard)
-    ) { content() }
+    ) {
+        content()
+    }
 }
 
 @Composable
 fun SettingsIcon(icon: ImageVector, tint: Color) {
     Box(
-        modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(tint.copy(alpha = 0.15f)),
-        contentAlignment = Alignment.Center
+        modifier = Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(tint.copy(alpha = 0.15f)),
+        contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
     }
@@ -866,30 +882,20 @@ fun SettingsTextField(
     icon: ImageVector,
     isPassword: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
-    trailingIcon: @Composable (() -> Unit)? = null
+    trailingIcon: @Composable (() -> Unit)? = null,
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = Modifier.fillMaxWidth(),
-        label = { Text(label, color = TextSecondary) },
-        placeholder = { Text(placeholder, color = TextTertiary) },
+        label = { Text(label) },
+        placeholder = { Text(placeholder, color = MaterialTheme.colorScheme.outline) },
         leadingIcon = {
-            Icon(icon, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(20.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
         },
         trailingIcon = trailingIcon,
         visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         singleLine = true,
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = PrimaryPurple,
-            unfocusedBorderColor = DarkSurfaceVariant,
-            focusedTextColor = TextPrimary,
-            unfocusedTextColor = TextPrimary,
-            cursorColor = PrimaryPurple,
-            focusedLabelColor = PrimaryPurple,
-            unfocusedLabelColor = TextSecondary
-        ),
-        shape = RoundedCornerShape(12.dp)
     )
 }
