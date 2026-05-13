@@ -79,12 +79,29 @@ class SSEStreamParser {
             val choice = choices[0].asJsonObject
             val delta = choice.getAsJsonObject("delta") ?: return ParseResult.Skip
 
-            // Check for reasoning/thinking content first (for models like o1, deepseek-r1)
+            // Collect results — reasoning and content can coexist in the same delta
+            val results = mutableListOf<ParseResult>()
+
+            // Check for reasoning/thinking content (for models like o1, deepseek-r1)
             if (delta.has("reasoning_content")) {
                 val reasoning = delta.get("reasoning_content")
                 if (!reasoning.isJsonNull) {
-                    return ParseResult.Thinking(reasoning.asString)
+                    results.add(ParseResult.Thinking(reasoning.asString))
                 }
+            }
+
+            // Check for regular content (may coexist with reasoning_content)
+            if (delta.has("content")) {
+                val content = delta.get("content")
+                if (!content.isJsonNull) {
+                    results.add(ParseResult.Content(content.asString))
+                }
+            }
+
+            // If we got thinking+content or content alone, return content first (answer takes priority)
+            if (results.isNotEmpty()) {
+                // Prefer Content over Thinking when both present
+                return results.firstOrNull { it is ParseResult.Content } ?: results.first()
             }
 
             // Check for tool calls
@@ -125,14 +142,6 @@ class SSEStreamParser {
                 }
 
                 return ParseResult.Skip
-            }
-
-            // Check for regular content
-            if (delta.has("content")) {
-                val content = delta.get("content")
-                if (!content.isJsonNull) {
-                    return ParseResult.Content(content.asString)
-                }
             }
 
             // Check for finish reason
