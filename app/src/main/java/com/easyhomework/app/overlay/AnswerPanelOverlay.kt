@@ -510,7 +510,6 @@ class AnswerPanelOverlay(
         scope.launch {
             if (config.stream) {
                 val pendingToolCalls = mutableListOf<ToolCall>()
-                var hasTextContent = false
 
                 llmRepository.streamChatCompletion(config, messages, tools).collect { event ->
                     when (event) {
@@ -544,7 +543,6 @@ class AnswerPanelOverlay(
                                 }
                                 updateBubbleText(loadingView, "", isLoading = true)
                             }
-                            hasTextContent = true
                             currentStreamingText.append(event.text)
                             updateBubbleText(
                                 loadingView,
@@ -572,7 +570,15 @@ class AnswerPanelOverlay(
                                     }
                                 }
 
-                                processToolCalls(pendingToolCalls.toList())
+                                try {
+                                    processToolCalls(pendingToolCalls.toList())
+                                } catch (e: Exception) {
+                                    handler.post {
+                                        val errView = addAssistantBubble("", isLoading = false)
+                                        updateBubbleText(errView, "工具执行失败: ${e.message}", isLoading = false, isError = true)
+                                        scrollToBottom()
+                                    }
+                                }
                             } else {
                                 val fullText = currentStreamingText.toString()
                                 if (fullText.isNotBlank()) {
@@ -592,8 +598,17 @@ class AnswerPanelOverlay(
                             }
                         }
                         is LLMRepository.StreamEvent.Error -> {
-                            updateBubbleText(loadingView, event.message, isLoading = false, isError = true)
-                            scrollToBottom()
+                            if (pendingToolCalls.isNotEmpty()) {
+                                try {
+                                    processToolCalls(pendingToolCalls.toList())
+                                } catch (e: Exception) {
+                                    updateBubbleText(loadingView, "工具执行失败: ${e.message}\n原始错误: ${event.message}", isLoading = false, isError = true)
+                                    scrollToBottom()
+                                }
+                            } else {
+                                updateBubbleText(loadingView, event.message, isLoading = false, isError = true)
+                                scrollToBottom()
+                            }
                         }
                     }
                 }
@@ -652,7 +667,15 @@ class AnswerPanelOverlay(
             } catch (_: Exception) {}
         }
 
-        processToolCalls(toolCalls)
+        try {
+            processToolCalls(toolCalls)
+        } catch (e: Exception) {
+            handler.post {
+                val errView = addAssistantBubble("", isLoading = false)
+                updateBubbleText(errView, "工具执行失败: ${e.message}", isLoading = false, isError = true)
+                scrollToBottom()
+            }
+        }
     }
 
     // ---- Bubble Views ----
