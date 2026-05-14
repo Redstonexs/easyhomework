@@ -490,11 +490,17 @@ class AnswerPanelOverlay(
     private var isThinkingPhase = false
     private var thinkingExpanded = true
 
+    private var toolCallDepth = 0
+    private companion object {
+        const val MAX_TOOL_CALL_DEPTH = 5
+    }
+
     private fun sendToLLM(loadingView: TextView) {
         val config = preferencesManager.getLLMConfig()
 
         if (config.apiKey.isBlank()) {
             updateBubbleText(loadingView, "请先在设置中配置 API 密钥", isLoading = false, isError = true)
+            toolCallDepth = 0
             return
         }
 
@@ -511,14 +517,17 @@ class AnswerPanelOverlay(
             if (config.stream) {
                 val pendingToolCalls = mutableListOf<ToolCall>()
                 var contentReceived = false
+                val parentJob = coroutineContext[Job]!!
 
                 val timeoutJob = launch {
-                    kotlinx.coroutines.delay(60_000)
-                    if (!contentReceived) {
-                        updateBubbleText(loadingView, "请求超时，请检查网络或 API 配置", isLoading = false, isError = true)
-                        scrollToBottom()
-                        currentCoroutineContext().cancel()
-                    }
+                    try {
+                        kotlinx.coroutines.delay(60_000)
+                        if (!contentReceived) {
+                            updateBubbleText(loadingView, "请求超时，请检查网络或 API 配置", isLoading = false, isError = true)
+                            scrollToBottom()
+                            parentJob.cancel()
+                        }
+                    } catch (_: CancellationException) {}
                 }
 
                 try {
@@ -584,16 +593,24 @@ class AnswerPanelOverlay(
                                         }
                                     }
 
-                                    try {
-                                        processToolCalls(fullText, pendingToolCalls.toList())
-                                    } catch (e: Exception) {
-                                        handler.post {
-                                            val errView = addAssistantBubble("", isLoading = false)
-                                            updateBubbleText(errView, "工具执行失败: ${e.message}", isLoading = false, isError = true)
-                                            scrollToBottom()
+                                    if (toolCallDepth >= MAX_TOOL_CALL_DEPTH) {
+                                        toolCallDepth = 0
+                                        updateBubbleText(loadingView, "工具调用次数过多，已停止", isLoading = false, isError = true)
+                                        scrollToBottom()
+                                    } else {
+                                        try {
+                                            processToolCalls(fullText, pendingToolCalls.toList())
+                                        } catch (e: Exception) {
+                                            toolCallDepth = 0
+                                            handler.post {
+                                                val errView = addAssistantBubble("", isLoading = false)
+                                                updateBubbleText(errView, "工具执行失败: ${e.message}", isLoading = false, isError = true)
+                                                scrollToBottom()
+                                            }
                                         }
                                     }
                                 } else {
+                                    toolCallDepth = 0
                                     val fullText = currentStreamingText.toString()
                                     if (fullText.isNotBlank()) {
                                         messages.add(ChatMessage.assistant(fullText))
@@ -620,10 +637,12 @@ class AnswerPanelOverlay(
                                     try {
                                         processToolCalls(fullText, pendingToolCalls.toList())
                                     } catch (e: Exception) {
+                                        toolCallDepth = 0
                                         updateBubbleText(loadingView, "工具执行失败: ${e.message}\n原始错误: ${event.message}", isLoading = false, isError = true)
                                         scrollToBottom()
                                     }
                                 } else {
+                                    toolCallDepth = 0
                                     updateBubbleText(loadingView, event.message, isLoading = false, isError = true)
                                     scrollToBottom()
                                 }
@@ -632,8 +651,10 @@ class AnswerPanelOverlay(
                     }
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     timeoutJob.cancel()
+                    toolCallDepth = 0
                 } catch (e: Exception) {
                     timeoutJob.cancel()
+                    toolCallDepth = 0
                     updateBubbleText(loadingView, "请求失败: ${e.message}", isLoading = false, isError = true)
                     scrollToBottom()
                 }
@@ -645,6 +666,7 @@ class AnswerPanelOverlay(
                         if (response.toolCalls != null && response.toolCalls.isNotEmpty()) {
                             handleToolCalls(response.content, response.toolCalls, loadingView)
                         } else {
+                            toolCallDepth = 0
                             val text = response.content ?: ""
                             messages.add(ChatMessage.assistant(text))
                             updateBubbleText(loadingView, text, isLoading = false)
@@ -653,6 +675,7 @@ class AnswerPanelOverlay(
                         }
                     },
                     onFailure = { error ->
+                        toolCallDepth = 0
                         updateBubbleText(loadingView, error.message ?: "未知错误", isLoading = false, isError = true)
                         scrollToBottom()
                     },
@@ -662,6 +685,7 @@ class AnswerPanelOverlay(
     }
 
     private suspend fun processToolCalls(fullText: String?, toolCalls: List<ToolCall>) {
+        toolCallDepth++
         val correctedToolCalls = toolCalls.map { tc ->
             val correctedName = if (tc.name == "get_current_datatime" || tc.name == "get_datetime") {
                 "get_current_datetime"
@@ -702,9 +726,20 @@ class AnswerPanelOverlay(
             } catch (_: Exception) {}
         }
 
+        if (toolCallDepth >= MAX_TOOL_CALL_DEPTH) {
+            toolCallDepth = 0
+            handler.post {
+                val errView = addAssistantBubble("", isLoading = false)
+                updateBubbleText(errView, "工具调用次数过多，已停止", isLoading = false, isError = true)
+                scrollToBottom()
+            }
+            return
+        }
+
         try {
             processToolCalls(fullText, toolCalls)
         } catch (e: Exception) {
+            toolCallDepth = 0
             handler.post {
                 val errView = addAssistantBubble("", isLoading = false)
                 updateBubbleText(errView, "工具执行失败: ${e.message}", isLoading = false, isError = true)

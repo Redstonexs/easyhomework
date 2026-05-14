@@ -129,15 +129,12 @@ class SSEStreamParser {
 
                 // Check if this is a complete tool call (has finish_reason or no more chunks expected)
                 if (choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull) {
-                    val finishReason = choice.get("finish_reason").asString
-                    if (finishReason == "tool_calls" || finishReason == "stop") {
-                        val allToolCalls = toolCallBuffers.values.map { buf ->
-                            ToolCall(id = buf.id, name = buf.name, arguments = buf.arguments.toString())
-                        }
-                        toolCallBuffers.clear()
-                        if (allToolCalls.isNotEmpty()) {
-                            return ParseResult.ToolCalls(allToolCalls)
-                        }
+                    val allToolCalls = toolCallBuffers.values.map { buf ->
+                        ToolCall(id = buf.id, name = buf.name, arguments = buf.arguments.toString())
+                    }
+                    toolCallBuffers.clear()
+                    if (allToolCalls.isNotEmpty()) {
+                        return ParseResult.ToolCalls(allToolCalls)
                     }
                 }
 
