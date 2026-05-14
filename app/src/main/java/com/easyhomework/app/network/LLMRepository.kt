@@ -13,11 +13,13 @@ import com.easyhomework.app.tools.ToolRegistry
 import com.easyhomework.app.tools.ToolResult
 import com.google.gson.Gson
 import com.google.gson.JsonParser
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -46,11 +48,13 @@ class LLMRepository {
 
     /**
      * Send a streaming chat completion request.
+     * @param scope The coroutine scope - when cancelled, the HTTP connection will be closed.
      */
     fun streamChatCompletion(
         config: LLMConfig,
         messages: List<ChatMessage>,
-        tools: List<ToolDefinition>? = null
+        tools: List<ToolDefinition>? = null,
+        scope: CoroutineScope? = null
     ): Flow<StreamEvent> = flow {
         emit(StreamEvent.Started)
 
@@ -58,8 +62,16 @@ class LLMRepository {
         val requestBody = buildRequestBody(config, messages, stream = true, tools = tools)
         val request = buildRequest(config, requestBody)
 
+        var call: Call? = null
+        scope?.coroutineContext?.let { ctx ->
+            ctx[kotlinx.coroutines.Job]?.invokeOnCompletion {
+                call?.cancel()
+            }
+        }
+
         try {
-            val response = client.newCall(request).execute()
+            call = client.newCall(request)
+            val response = call!!.execute()
 
             response.use { resp ->
                 if (!resp.isSuccessful) {

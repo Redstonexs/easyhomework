@@ -531,7 +531,7 @@ class AnswerPanelOverlay(
                 }
 
                 try {
-                    llmRepository.streamChatCompletion(config, messages, tools).collect { event ->
+                    llmRepository.streamChatCompletion(config, messages, tools, scope).collect { event ->
                         when (event) {
                             is LLMRepository.StreamEvent.Started -> {
                                 updateBubbleText(loadingView, "思考中...", isLoading = true)
