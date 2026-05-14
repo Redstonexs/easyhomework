@@ -662,9 +662,17 @@ class AnswerPanelOverlay(
     }
 
     private suspend fun processToolCalls(toolCalls: List<ToolCall>) {
-        messages.add(ChatMessage.assistantWithToolCalls(null, toolCalls))
+        val correctedToolCalls = toolCalls.map { tc ->
+            if (tc.name == "get_current_datatime" || tc.name == "get_datetime") {
+                tc.copy(name = "get_current_datetime")
+            } else {
+                tc
+            }
+        }
 
-        for (toolCall in toolCalls) {
+        messages.add(ChatMessage.assistantWithToolCalls(null, correctedToolCalls))
+
+        for (toolCall in correctedToolCalls) {
             val argsDisplay = parseToolCallArgs(toolCall)
             val toolName = getToolDisplayName(toolCall.name)
 
