@@ -109,13 +109,13 @@ class AnswerPanelOverlay(
     private val screenHeight = serviceContext.resources.displayMetrics.heightPixels
     private val minHeight = (screenHeight * 0.25f).toInt()
     private val maxHeight = (screenHeight * 0.92f).toInt()
-    private val dismissThreshold = dp(150f)
+    private val dismissHeightThreshold = (screenHeight * 0.28f).toInt() // panel must be shrunk to ~28% before dismiss
     private val resizeThreshold = dp(8f)
     private val snapRatios = floatArrayOf(0.35f, 0.50f, 0.65f, 0.80f)
 
     // Velocity tracking for fling detection
     private var velocityTracker: VelocityTracker? = null
-    private val flingVelocityThreshold = 1500f // pixels per second
+    private val flingVelocityThreshold = 1200f // pixels per second
     private var lastMoveTime = 0L
     private var lastMoveY = 0f
 
@@ -241,12 +241,14 @@ class AnswerPanelOverlay(
 
                         if (isDragging) {
                             val deltaY = event.rawY - touchStartY
+                            val currentHeight = panelContainer.height
+                            val isNearMin = currentHeight <= dismissHeightThreshold
 
-                            // Check for fling-to-dismiss (fast downward fling)
-                            val isFlingDown = velocityY > flingVelocityThreshold
-                            val isPastDismissThreshold = deltaY > dismissThreshold
+                            // Only dismiss if panel is shrunk near minimum AND user drags/flings down
+                            val isFlingDown = velocityY > flingVelocityThreshold && isNearMin
+                            val isDragPastMin = deltaY > 0 && isNearMin
 
-                            if (isFlingDown || isPastDismissThreshold) {
+                            if (isFlingDown || isDragPastMin) {
                                 animateOut()
                             } else {
                                 snapToNearestHeight()
