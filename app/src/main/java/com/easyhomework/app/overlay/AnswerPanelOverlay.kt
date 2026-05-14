@@ -1,6 +1,7 @@
 package com.easyhomework.app.overlay
 
 import android.annotation.SuppressLint
+import android.animation.ValueAnimator
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -15,6 +16,7 @@ import android.view.animation.OvershootInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.*
+import kotlin.math.abs
 import com.easyhomework.app.data.AppDatabase
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.LLMConfig
@@ -99,9 +101,28 @@ class AnswerPanelOverlay(
 
     private val density = serviceContext.resources.displayMetrics.density
 
-    // Swipe-to-dismiss state
+    // Drag state
     private var touchStartY = 0f
+    private var touchLastY = 0f
     private var isDragging = false
+    private var panelStartHeight = 0
+    private val screenHeight = serviceContext.resources.displayMetrics.heightPixels
+    private val minHeight = (screenHeight * 0.25f).toInt()
+    private val maxHeight = (screenHeight * 0.92f).toInt()
+    private val dismissThreshold = dp(150f)
+    private val resizeThreshold = dp(8f)
+    private val snapRatios = floatArrayOf(0.35f, 0.50f, 0.65f, 0.80f)
+
+    // Velocity tracking for fling detection
+    private var velocityTracker: VelocityTracker? = null
+    private val flingVelocityThreshold = 1500f // pixels per second
+    private var lastMoveTime = 0L
+    private var lastMoveY = 0f
+
+    // Height indicator
+    private var heightIndicator: TextView? = null
+    private var heightIndicatorHandler = Handler(Looper.getMainLooper())
+    private var hideHeightIndicatorRunnable: Runnable? = null
 
     init {
         buildUI()
@@ -134,8 +155,7 @@ class AnswerPanelOverlay(
             clipToOutline = true
         }
 
-        val screenHeight = context.resources.displayMetrics.heightPixels
-        val panelHeight = (screenHeight * 0.65f).toInt()
+        val panelHeight = (screenHeight * preferencesManager.answerPanelHeightRatio).toInt()
         val panelParams = LayoutParams(
             LayoutParams.MATCH_PARENT,
             panelHeight,
@@ -145,7 +165,30 @@ class AnswerPanelOverlay(
 
         addView(panelContainer, panelParams)
 
-        // Drag handle container with swipe gesture
+        // Height indicator (shown during drag)
+        heightIndicator = TextView(context).apply {
+            setTextColor(onPrimaryColor)
+            textSize = 14f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            val bg = GradientDrawable().apply {
+                setColor(Color.parseColor("#CC000000"))
+                cornerRadius = dp(20f)
+            }
+            background = bg
+            setPadding(dp(16f).toInt(), dp(8f).toInt(), dp(16f).toInt(), dp(8f).toInt())
+            alpha = 0f
+            visibility = GONE
+        }
+        val indicatorParams = LayoutParams(
+            LayoutParams.WRAP_CONTENT,
+            LayoutParams.WRAP_CONTENT,
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+        addView(heightIndicator, indicatorParams)
+
+        // Drag handle container with improved resize and fling-to-dismiss gesture
         val handleContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -154,32 +197,68 @@ class AnswerPanelOverlay(
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
                         touchStartY = event.rawY
+                        touchLastY = event.rawY
+                        panelStartHeight = panelContainer.height
                         isDragging = false
-                        false
+                        lastMoveTime = System.currentTimeMillis()
+                        lastMoveY = event.rawY
+
+                        // Initialize velocity tracker
+                        velocityTracker?.recycle()
+                        velocityTracker = VelocityTracker.obtain()
+                        velocityTracker?.addMovement(event)
+                        true
                     }
                     MotionEvent.ACTION_MOVE -> {
+                        velocityTracker?.addMovement(event)
                         val deltaY = event.rawY - touchStartY
-                        if (deltaY > 0) {
+                        val currentTime = System.currentTimeMillis()
+
+                        if (!isDragging && abs(deltaY) > resizeThreshold) {
                             isDragging = true
-                            panelContainer.translationY = deltaY * 0.4f // dampened drag
-                            true
-                        } else false
+                            showHeightIndicator()
+                        }
+
+                        if (isDragging) {
+                            // Continuous resize in both directions
+                            val newHeight = (panelStartHeight - deltaY)
+                                .coerceIn(minHeight.toFloat(), maxHeight.toFloat())
+                            val params = panelContainer.layoutParams as LayoutParams
+                            params.height = newHeight.toInt()
+                            panelContainer.layoutParams = params
+
+                            // Update height indicator
+                            updateHeightIndicator(newHeight.toInt())
+
+                            touchLastY = event.rawY
+                            lastMoveTime = currentTime
+                        }
+                        true
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        velocityTracker?.computeCurrentVelocity(1000)
+                        val velocityY = velocityTracker?.yVelocity ?: 0f
+
                         if (isDragging) {
                             val deltaY = event.rawY - touchStartY
-                            if (deltaY > dp(120f)) {
+
+                            // Check for fling-to-dismiss (fast downward fling)
+                            val isFlingDown = velocityY > flingVelocityThreshold
+                            val isPastDismissThreshold = deltaY > dismissThreshold
+
+                            if (isFlingDown || isPastDismissThreshold) {
                                 animateOut()
                             } else {
-                                panelContainer.animate()
-                                    .translationY(0f)
-                                    .setDuration(250)
-                                    .setInterpolator(OvershootInterpolator(1.2f))
-                                    .start()
+                                snapToNearestHeight()
                             }
-                            isDragging = false
-                            true
-                        } else false
+
+                            hideHeightIndicator()
+                        }
+
+                        isDragging = false
+                        velocityTracker?.recycle()
+                        velocityTracker = null
+                        true
                     }
                     else -> false
                 }
@@ -1074,7 +1153,57 @@ class AnswerPanelOverlay(
 
     private fun dp(value: Float): Float = value * density
 
+    private fun showHeightIndicator() {
+        heightIndicator?.let { indicator ->
+            indicator.visibility = VISIBLE
+            indicator.animate()
+                .alpha(1f)
+                .setDuration(150)
+                .start()
+        }
+    }
+
+    private fun updateHeightIndicator(height: Int) {
+        val ratio = (height.toFloat() / screenHeight * 100).toInt()
+        heightIndicator?.text = "${ratio}%"
+    }
+
+    private fun hideHeightIndicator() {
+        hideHeightIndicatorRunnable?.let { heightIndicatorHandler.removeCallbacks(it) }
+        hideHeightIndicatorRunnable = Runnable {
+            heightIndicator?.animate()
+                ?.alpha(0f)
+                ?.setDuration(200)
+                ?.withEndAction { heightIndicator?.visibility = GONE }
+                ?.start()
+        }
+        heightIndicatorHandler.postDelayed(hideHeightIndicatorRunnable!!, 800)
+    }
+
+    private fun snapToNearestHeight() {
+        val currentRatio = panelContainer.height.toFloat() / screenHeight
+        val nearestRatio = snapRatios.minByOrNull { abs(it - currentRatio) } ?: 0.65f
+        val targetHeight = (screenHeight * nearestRatio).toInt()
+        preferencesManager.answerPanelHeightRatio = nearestRatio
+
+        val params = panelContainer.layoutParams as LayoutParams
+        val startHeight = params.height
+        val animator = ValueAnimator.ofInt(startHeight, targetHeight).apply {
+            duration = 350
+            interpolator = OvershootInterpolator(0.8f)
+            addUpdateListener { animation ->
+                val value = animation.animatedValue as Int
+                val p = panelContainer.layoutParams as LayoutParams
+                p.height = value
+                panelContainer.layoutParams = p
+            }
+        }
+        animator.start()
+    }
+
     fun release() {
+        hideHeightIndicatorRunnable?.let { heightIndicatorHandler.removeCallbacks(it) }
+        heightIndicator?.animate()?.cancel()
         scope.cancel()
     }
 }

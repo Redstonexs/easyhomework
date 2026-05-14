@@ -193,6 +193,12 @@ class PreferencesManager(context: Context) {
         get() = prefs.getInt(KEY_BALL_Y, 300)
         set(value) = prefs.edit().putInt(KEY_BALL_Y, value).apply()
 
+    // ---- Answer Panel State ----
+
+    var answerPanelHeightRatio: Float
+        get() = prefs.getFloat(KEY_PANEL_HEIGHT_RATIO, 0.65f)
+        set(value) = prefs.edit().putFloat(KEY_PANEL_HEIGHT_RATIO, value).apply()
+
     companion object {
         // Legacy keys
         private const val KEY_API_TYPE = "api_type"
@@ -210,6 +216,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_FLOATING_BALL_ENABLED = "floating_ball_enabled"
         private const val KEY_BALL_X = "ball_x"
         private const val KEY_BALL_Y = "ball_y"
+        private const val KEY_PANEL_HEIGHT_RATIO = "panel_height_ratio"
 
         // Multi-provider keys
         private const val KEY_PROVIDER_CONFIGS = "provider_configs"
