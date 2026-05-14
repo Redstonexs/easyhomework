@@ -13,7 +13,7 @@ class ToolExecutor {
     suspend fun execute(toolCall: ToolCall): ToolResult {
         return try {
             when (toolCall.name) {
-                "get_current_datetime" -> executeGetCurrentDateTime(toolCall)
+                "get_current_datetime", "get_current_datatime" -> executeGetCurrentDateTime(toolCall)
                 "calculate" -> executeCalculate(toolCall)
                 "evaluate_js" -> executeEvaluateJs(toolCall)
                 "convert_unit" -> executeConvertUnit(toolCall)

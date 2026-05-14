@@ -938,7 +938,7 @@ class AnswerPanelOverlay(
 
     private fun getToolDisplayName(toolName: String): String {
         return when (toolName) {
-            "get_current_datetime" -> "获取日期时间"
+            "get_current_datetime", "get_current_datatime" -> "获取日期时间"
             "calculate" -> "计算表达式"
             "evaluate_js" -> "执行计算"
             "convert_unit" -> "单位转换"
