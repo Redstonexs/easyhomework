@@ -106,6 +106,7 @@ fun SettingsScreen(
     isServiceRunning: Boolean,
     onToggleService: (Boolean) -> Unit,
     onNavigateToHistory: () -> Unit,
+    onResyncState: () -> Unit = {},
 ) {
     val config by viewModel.config.collectAsState()
     val providerConfigs by viewModel.providerConfigs.collectAsState()
@@ -118,6 +119,16 @@ fun SettingsScreen(
     var expandAdvanced by remember { mutableStateOf(false) }
     var showModelDropdown by remember { mutableStateOf(false) }
     var showProviderMenu by remember { mutableStateOf(false) }
+
+    // Re-sync state when screen becomes visible (e.g., returning from history)
+    LaunchedEffect(Unit) {
+        onResyncState()
+    }
+
+    // Update local state when external state changes
+    LaunchedEffect(isServiceRunning) {
+        serviceEnabled = isServiceRunning
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
 

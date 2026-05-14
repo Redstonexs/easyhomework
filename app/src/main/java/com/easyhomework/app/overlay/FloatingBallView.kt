@@ -73,30 +73,21 @@ class FloatingBallView @JvmOverloads constructor(
         val radius = min(width, height) / 2f - if (isMiniMode) 2f else 4f
 
         if (isMiniMode) {
-            // Mini mode: small, semi-transparent with gradient
-            val miniAlpha = 160
-            val radius = min(width, height) / 2f - 1f
+            // Mini mode: neutral gray, visible on both white and black backgrounds
+            val miniRadius = min(width, height) / 2f - 1f
 
-            // Gradient background
             val miniPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                shader = LinearGradient(
-                    cx - radius, cy - radius,
-                    cx + radius, cy + radius,
-                    gradientColors, null,
-                    Shader.TileMode.CLAMP
-                )
-                this.alpha = miniAlpha
+                color = Color.parseColor("#99808080") // 60% alpha gray
                 style = Paint.Style.FILL
             }
-            canvas.drawCircle(cx, cy, radius, miniPaint)
+            canvas.drawCircle(cx, cy, miniRadius, miniPaint)
 
-            // Small inner dot
+            // Slightly darker center dot for visibility
             val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.WHITE
-                this.alpha = miniAlpha
+                color = Color.parseColor("#B0606060") // 69% alpha dark gray
                 style = Paint.Style.FILL
             }
-            canvas.drawCircle(cx, cy, radius * 0.35f, dotPaint)
+            canvas.drawCircle(cx, cy, miniRadius * 0.35f, dotPaint)
         } else {
             // Normal mode: gradient background (same look as old mini mode)
             val alpha = 220

@@ -71,6 +71,7 @@ class FloatingBallService : Service() {
         private const val CLICK_THRESHOLD = 10
         private const val BALL_SIZE_NORMAL = 52
         private const val BALL_SIZE_MINI = 14
+        private const val BALL_TOUCH_SIZE_MINI = 36 // Larger touch target for mini ball
         private const val LONG_PRESS_DURATION = 800L
 
         private var instance: FloatingBallService? = null
@@ -130,7 +131,8 @@ class FloatingBallService : Service() {
         if (floatingBallView != null) return
 
         val isMini = preferencesManager.getLLMConfig().miniBall
-        val ballSize = if (isMini) BALL_SIZE_MINI else BALL_SIZE_NORMAL
+        // Mini ball uses larger touch target for easier dragging
+        val ballSize = if (isMini) BALL_TOUCH_SIZE_MINI else BALL_SIZE_NORMAL
         val ballSizePx = (ballSize * resources.displayMetrics.density).toInt()
 
         ballParams = WindowManager.LayoutParams(
@@ -263,6 +265,7 @@ class FloatingBallService : Service() {
 
     /**
      * Long press handler — closes the floating ball service.
+     * Syncs the enabled state with preferences so the in-app toggle reflects the change.
      */
     private fun onLongPress() {
         // Haptic feedback
@@ -273,6 +276,7 @@ class FloatingBallService : Service() {
             ?.scaleX(0f)?.scaleY(0f)?.alpha(0f)
             ?.setDuration(300)
             ?.withEndAction {
+                preferencesManager.isFloatingBallEnabled = false
                 Toast.makeText(this, "悬浮球已关闭", Toast.LENGTH_SHORT).show()
                 stopSelf()
             }

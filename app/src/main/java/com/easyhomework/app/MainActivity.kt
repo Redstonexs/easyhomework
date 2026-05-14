@@ -61,15 +61,29 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
+                    // Use preferences as source of truth, updated by service lifecycle
+                    var serviceEnabled by remember { mutableStateOf(preferencesManager.isFloatingBallEnabled) }
+
+                    // Re-check state on each recomposition when returning to this screen
+                    LaunchedEffect(Unit) {
+                        // Initial sync
+                        serviceEnabled = preferencesManager.isFloatingBallEnabled
+                    }
+
                     AppNavigation(
                         onToggleService = { enabled ->
+                            serviceEnabled = enabled
                             if (enabled) {
                                 requestOverlayPermissionAndStart()
                             } else {
                                 stopFloatingBallService()
                             }
                         },
-                        isServiceRunning = FloatingBallService.getInstance() != null
+                        isServiceRunning = serviceEnabled,
+                        onResyncState = {
+                            // Called when returning to settings screen to pick up external changes
+                            serviceEnabled = preferencesManager.isFloatingBallEnabled
+                        }
                     )
                 }
             }
@@ -104,7 +118,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigation(
     onToggleService: (Boolean) -> Unit,
-    isServiceRunning: Boolean
+    isServiceRunning: Boolean,
+    onResyncState: () -> Unit
 ) {
     val navController = rememberNavController()
 
@@ -117,7 +132,8 @@ fun AppNavigation(
                 onToggleService = onToggleService,
                 onNavigateToHistory = {
                     navController.navigate("history")
-                }
+                },
+                onResyncState = onResyncState
             )
         }
         composable("history") {
