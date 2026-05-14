@@ -573,7 +573,6 @@ class AnswerPanelOverlay(
                                 if (pendingToolCalls.isNotEmpty()) {
                                     val fullText = currentStreamingText.toString()
                                     if (fullText.isNotBlank()) {
-                                        messages.add(ChatMessage.assistant(fullText))
                                         updateBubbleText(loadingView, fullText, isLoading = false)
                                     } else {
                                         handler.post {
@@ -586,7 +585,7 @@ class AnswerPanelOverlay(
                                     }
 
                                     try {
-                                        processToolCalls(pendingToolCalls.toList())
+                                        processToolCalls(fullText, pendingToolCalls.toList())
                                     } catch (e: Exception) {
                                         handler.post {
                                             val errView = addAssistantBubble("", isLoading = false)
@@ -617,8 +616,9 @@ class AnswerPanelOverlay(
                             is LLMRepository.StreamEvent.Error -> {
                                 timeoutJob.cancel()
                                 if (pendingToolCalls.isNotEmpty()) {
+                                    val fullText = currentStreamingText.toString()
                                     try {
-                                        processToolCalls(pendingToolCalls.toList())
+                                        processToolCalls(fullText, pendingToolCalls.toList())
                                     } catch (e: Exception) {
                                         updateBubbleText(loadingView, "工具执行失败: ${e.message}\n原始错误: ${event.message}", isLoading = false, isError = true)
                                         scrollToBottom()
@@ -643,7 +643,7 @@ class AnswerPanelOverlay(
                 result.fold(
                     onSuccess = { response ->
                         if (response.toolCalls != null && response.toolCalls.isNotEmpty()) {
-                            handleToolCalls(response.toolCalls, loadingView)
+                            handleToolCalls(response.content, response.toolCalls, loadingView)
                         } else {
                             val text = response.content ?: ""
                             messages.add(ChatMessage.assistant(text))
@@ -661,16 +661,18 @@ class AnswerPanelOverlay(
         }
     }
 
-    private suspend fun processToolCalls(toolCalls: List<ToolCall>) {
+    private suspend fun processToolCalls(fullText: String?, toolCalls: List<ToolCall>) {
         val correctedToolCalls = toolCalls.map { tc ->
-            if (tc.name == "get_current_datatime" || tc.name == "get_datetime") {
-                tc.copy(name = "get_current_datetime")
+            val correctedName = if (tc.name == "get_current_datatime" || tc.name == "get_datetime") {
+                "get_current_datetime"
             } else {
-                tc
+                tc.name
             }
+            val correctedArgs = if (tc.arguments.isBlank()) "{}" else tc.arguments
+            tc.copy(name = correctedName, arguments = correctedArgs)
         }
 
-        messages.add(ChatMessage.assistantWithToolCalls(null, correctedToolCalls))
+        messages.add(ChatMessage.assistantWithToolCalls(fullText?.ifBlank { null }, correctedToolCalls))
 
         for (toolCall in correctedToolCalls) {
             val argsDisplay = parseToolCallArgs(toolCall)
@@ -691,7 +693,7 @@ class AnswerPanelOverlay(
         }
     }
 
-    private suspend fun handleToolCalls(toolCalls: List<ToolCall>, @Suppress("UNUSED_PARAMETER") loadingView: TextView) {
+    private suspend fun handleToolCalls(fullText: String?, toolCalls: List<ToolCall>, @Suppress("UNUSED_PARAMETER") loadingView: TextView) {
         handler.post {
             try {
                 (loadingView.parent as? View)?.let { container ->
@@ -701,7 +703,7 @@ class AnswerPanelOverlay(
         }
 
         try {
-            processToolCalls(toolCalls)
+            processToolCalls(fullText, toolCalls)
         } catch (e: Exception) {
             handler.post {
                 val errView = addAssistantBubble("", isLoading = false)
