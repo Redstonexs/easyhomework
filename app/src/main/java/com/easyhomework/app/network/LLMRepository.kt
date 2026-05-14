@@ -61,45 +61,47 @@ class LLMRepository {
         try {
             val response = client.newCall(request).execute()
 
-            if (!response.isSuccessful) {
-                val errorBody = response.body?.string() ?: "Unknown error"
-                emit(StreamEvent.Error("API Error (${response.code}): $errorBody"))
-                return@flow
-            }
-
-            val reader = BufferedReader(
-                InputStreamReader(response.body?.byteStream() ?: run {
-                    emit(StreamEvent.Error("Empty response body"))
+            response.use { resp ->
+                if (!resp.isSuccessful) {
+                    val errorBody = resp.body?.string() ?: "Unknown error"
+                    emit(StreamEvent.Error("API Error (${resp.code}): $errorBody"))
                     return@flow
-                })
-            )
+                }
 
-            reader.use { r ->
-                var line: String?
-                while (r.readLine().also { line = it } != null) {
-                    when (val result = sseParser.parseLine(line!!, config.apiType)) {
-                        is SSEStreamParser.ParseResult.Content -> {
-                            emit(StreamEvent.Token(result.text))
-                        }
-                        is SSEStreamParser.ParseResult.Thinking -> {
-                            emit(StreamEvent.Thinking(result.text))
-                        }
-                        is SSEStreamParser.ParseResult.ToolCall -> {
-                            emit(StreamEvent.ToolCall(result.toolCall))
-                        }
-                        is SSEStreamParser.ParseResult.ToolCalls -> {
-                            for (tc in result.toolCalls) {
-                                emit(StreamEvent.ToolCall(tc))
+                val reader = BufferedReader(
+                    InputStreamReader(resp.body?.byteStream() ?: run {
+                        emit(StreamEvent.Error("Empty response body"))
+                        return@flow
+                    })
+                )
+
+                reader.use { r ->
+                    var line: String?
+                    while (r.readLine().also { line = it } != null) {
+                        when (val result = sseParser.parseLine(line!!, config.apiType)) {
+                            is SSEStreamParser.ParseResult.Content -> {
+                                emit(StreamEvent.Token(result.text))
                             }
-                        }
-                        is SSEStreamParser.ParseResult.Done -> {
-                            break
-                        }
-                        is SSEStreamParser.ParseResult.Error -> {
-                            emit(StreamEvent.Error(result.message))
-                        }
-                        is SSEStreamParser.ParseResult.Skip -> {
-                            // Silently skip
+                            is SSEStreamParser.ParseResult.Thinking -> {
+                                emit(StreamEvent.Thinking(result.text))
+                            }
+                            is SSEStreamParser.ParseResult.ToolCall -> {
+                                emit(StreamEvent.ToolCall(result.toolCall))
+                            }
+                            is SSEStreamParser.ParseResult.ToolCalls -> {
+                                for (tc in result.toolCalls) {
+                                    emit(StreamEvent.ToolCall(tc))
+                                }
+                            }
+                            is SSEStreamParser.ParseResult.Done -> {
+                                break
+                            }
+                            is SSEStreamParser.ParseResult.Error -> {
+                                emit(StreamEvent.Error(result.message))
+                            }
+                            is SSEStreamParser.ParseResult.Skip -> {
+                                // Silently skip
+                            }
                         }
                     }
                 }

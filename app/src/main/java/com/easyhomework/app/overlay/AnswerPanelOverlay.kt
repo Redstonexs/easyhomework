@@ -510,107 +510,132 @@ class AnswerPanelOverlay(
         scope.launch {
             if (config.stream) {
                 val pendingToolCalls = mutableListOf<ToolCall>()
+                var contentReceived = false
 
-                llmRepository.streamChatCompletion(config, messages, tools).collect { event ->
-                    when (event) {
-                        is LLMRepository.StreamEvent.Started -> {
-                            updateBubbleText(loadingView, "思考中...", isLoading = true)
-                        }
-                        is LLMRepository.StreamEvent.Thinking -> {
-                            if (!isThinkingPhase) {
-                                isThinkingPhase = true
-                                updateBubbleText(loadingView, "正在深度思考...", isLoading = true)
-                                val (container, tv) = addThinkingBubble()
-                                thinkingContainer = container
-                                thinkingView = tv
+                val timeoutJob = launch {
+                    kotlinx.coroutines.delay(60_000)
+                    if (!contentReceived) {
+                        updateBubbleText(loadingView, "请求超时，请检查网络或 API 配置", isLoading = false, isError = true)
+                        scrollToBottom()
+                        currentCoroutineContext().cancel()
+                    }
+                }
+
+                try {
+                    llmRepository.streamChatCompletion(config, messages, tools).collect { event ->
+                        when (event) {
+                            is LLMRepository.StreamEvent.Started -> {
+                                updateBubbleText(loadingView, "思考中...", isLoading = true)
                             }
-                            currentThinkingText.append(event.text)
-                            thinkingView?.let { tv ->
-                                handler.post {
-                                    tv.text = currentThinkingText.toString()
+                            is LLMRepository.StreamEvent.Thinking -> {
+                                contentReceived = true
+                                if (!isThinkingPhase) {
+                                    isThinkingPhase = true
+                                    updateBubbleText(loadingView, "正在深度思考...", isLoading = true)
+                                    val (container, tv) = addThinkingBubble()
+                                    thinkingContainer = container
+                                    thinkingView = tv
                                 }
-                            }
-                            scrollToBottom()
-                        }
-                        is LLMRepository.StreamEvent.Token -> {
-                            if (isThinkingPhase) {
-                                isThinkingPhase = false
+                                currentThinkingText.append(event.text)
                                 thinkingView?.let { tv ->
                                     handler.post {
-                                        tv.maxLines = 3
-                                        tv.ellipsize = android.text.TextUtils.TruncateAt.END
+                                        tv.text = currentThinkingText.toString()
                                     }
                                 }
-                                updateBubbleText(loadingView, "", isLoading = true)
+                                scrollToBottom()
                             }
-                            currentStreamingText.append(event.text)
-                            updateBubbleText(
-                                loadingView,
-                                currentStreamingText.toString(),
-                                isLoading = true,
-                            )
-                            scrollToBottom()
-                        }
-                        is LLMRepository.StreamEvent.ToolCall -> {
-                            pendingToolCalls.add(event.toolCall)
-                        }
-                        is LLMRepository.StreamEvent.Completed -> {
-                            if (pendingToolCalls.isNotEmpty()) {
-                                val fullText = currentStreamingText.toString()
-                                if (fullText.isNotBlank()) {
-                                    messages.add(ChatMessage.assistant(fullText))
-                                    updateBubbleText(loadingView, fullText, isLoading = false)
-                                } else {
-                                    handler.post {
-                                        try {
-                                            (loadingView.parent as? View)?.let { container ->
-                                                (container.parent as? ViewGroup)?.removeView(container)
-                                            }
-                                        } catch (_: Exception) {}
+                            is LLMRepository.StreamEvent.Token -> {
+                                contentReceived = true
+                                if (isThinkingPhase) {
+                                    isThinkingPhase = false
+                                    thinkingView?.let { tv ->
+                                        handler.post {
+                                            tv.maxLines = 3
+                                            tv.ellipsize = android.text.TextUtils.TruncateAt.END
+                                        }
                                     }
+                                    updateBubbleText(loadingView, "", isLoading = true)
                                 }
+                                currentStreamingText.append(event.text)
+                                updateBubbleText(
+                                    loadingView,
+                                    currentStreamingText.toString(),
+                                    isLoading = true,
+                                )
+                                scrollToBottom()
+                            }
+                            is LLMRepository.StreamEvent.ToolCall -> {
+                                contentReceived = true
+                                pendingToolCalls.add(event.toolCall)
+                            }
+                            is LLMRepository.StreamEvent.Completed -> {
+                                timeoutJob.cancel()
+                                if (pendingToolCalls.isNotEmpty()) {
+                                    val fullText = currentStreamingText.toString()
+                                    if (fullText.isNotBlank()) {
+                                        messages.add(ChatMessage.assistant(fullText))
+                                        updateBubbleText(loadingView, fullText, isLoading = false)
+                                    } else {
+                                        handler.post {
+                                            try {
+                                                (loadingView.parent as? View)?.let { container ->
+                                                    (container.parent as? ViewGroup)?.removeView(container)
+                                                }
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
 
-                                try {
-                                    processToolCalls(pendingToolCalls.toList())
-                                } catch (e: Exception) {
-                                    handler.post {
-                                        val errView = addAssistantBubble("", isLoading = false)
-                                        updateBubbleText(errView, "工具执行失败: ${e.message}", isLoading = false, isError = true)
+                                    try {
+                                        processToolCalls(pendingToolCalls.toList())
+                                    } catch (e: Exception) {
+                                        handler.post {
+                                            val errView = addAssistantBubble("", isLoading = false)
+                                            updateBubbleText(errView, "工具执行失败: ${e.message}", isLoading = false, isError = true)
+                                            scrollToBottom()
+                                        }
+                                    }
+                                } else {
+                                    val fullText = currentStreamingText.toString()
+                                    if (fullText.isNotBlank()) {
+                                        messages.add(ChatMessage.assistant(fullText))
+                                        updateBubbleText(loadingView, fullText, isLoading = false)
+                                    } else if (!contentReceived) {
+                                        updateBubbleText(loadingView, "未收到有效响应，请重试", isLoading = false, isError = true)
+                                    } else {
+                                        handler.post {
+                                            try {
+                                                (loadingView.parent as? View)?.let { container ->
+                                                    (container.parent as? ViewGroup)?.removeView(container)
+                                                }
+                                            } catch (_: Exception) {}
+                                        }
+                                    }
+                                    scrollToBottom()
+                                    saveToHistory()
+                                }
+                            }
+                            is LLMRepository.StreamEvent.Error -> {
+                                timeoutJob.cancel()
+                                if (pendingToolCalls.isNotEmpty()) {
+                                    try {
+                                        processToolCalls(pendingToolCalls.toList())
+                                    } catch (e: Exception) {
+                                        updateBubbleText(loadingView, "工具执行失败: ${e.message}\n原始错误: ${event.message}", isLoading = false, isError = true)
                                         scrollToBottom()
                                     }
-                                }
-                            } else {
-                                val fullText = currentStreamingText.toString()
-                                if (fullText.isNotBlank()) {
-                                    messages.add(ChatMessage.assistant(fullText))
-                                    updateBubbleText(loadingView, fullText, isLoading = false)
                                 } else {
-                                    handler.post {
-                                        try {
-                                            (loadingView.parent as? View)?.let { container ->
-                                                (container.parent as? ViewGroup)?.removeView(container)
-                                            }
-                                        } catch (_: Exception) {}
-                                    }
-                                }
-                                scrollToBottom()
-                                saveToHistory()
-                            }
-                        }
-                        is LLMRepository.StreamEvent.Error -> {
-                            if (pendingToolCalls.isNotEmpty()) {
-                                try {
-                                    processToolCalls(pendingToolCalls.toList())
-                                } catch (e: Exception) {
-                                    updateBubbleText(loadingView, "工具执行失败: ${e.message}\n原始错误: ${event.message}", isLoading = false, isError = true)
+                                    updateBubbleText(loadingView, event.message, isLoading = false, isError = true)
                                     scrollToBottom()
                                 }
-                            } else {
-                                updateBubbleText(loadingView, event.message, isLoading = false, isError = true)
-                                scrollToBottom()
                             }
                         }
                     }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    timeoutJob.cancel()
+                } catch (e: Exception) {
+                    timeoutJob.cancel()
+                    updateBubbleText(loadingView, "请求失败: ${e.message}", isLoading = false, isError = true)
+                    scrollToBottom()
                 }
             } else {
                 updateBubbleText(loadingView, "正在思考...", isLoading = true)
