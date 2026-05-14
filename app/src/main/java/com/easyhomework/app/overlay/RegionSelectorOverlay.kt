@@ -137,7 +137,7 @@ class RegionSelectorOverlay(
         val isVisionModel = config.supportsVision || LLMConfig.modelSupportsVision(config.modelName)
 
         val directImageBtn = if (isVisionModel) {
-            createButton("📸 直接识图", "#FF9800") {
+            createButton("直接识图", "#FF9800") {
                 confirmSelection(sendDirectImage = true)
             }
         } else null

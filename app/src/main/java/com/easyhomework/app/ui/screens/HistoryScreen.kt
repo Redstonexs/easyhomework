@@ -18,8 +18,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -127,7 +130,12 @@ fun HistoryScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("📚", fontSize = 48.sp)
+                    Icon(
+                        imageVector = Icons.Outlined.History,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         "还没有搜题记录",
@@ -211,12 +219,12 @@ fun HistoryItem(
 
                 IconButton(
                     onClick = onDelete,
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(40.dp),
                 ) {
                     Icon(
                         Icons.Filled.Delete,
                         contentDescription = "删除",
-                        tint = MaterialTheme.colorScheme.outline,
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f),
                         modifier = Modifier.size(18.dp),
                     )
                 }
@@ -235,9 +243,17 @@ fun HistoryItem(
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp),
                         ) {
-                            Text(
-                                text = if (message.role == ChatMessage.ROLE_USER) "❓" else "🤖",
-                                fontSize = 14.sp,
+                            Icon(
+                                imageVector = if (message.role == ChatMessage.ROLE_USER)
+                                    Icons.AutoMirrored.Filled.Help
+                                else
+                                    Icons.Filled.SmartToy,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = if (message.role == ChatMessage.ROLE_USER)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(

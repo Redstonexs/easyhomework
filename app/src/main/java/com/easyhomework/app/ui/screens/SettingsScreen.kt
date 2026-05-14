@@ -168,12 +168,15 @@ fun SettingsScreen(
                         modifier = Modifier
                             .size(56.dp)
                             .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(listOf(PrimaryPurple, PrimaryBlue)),
-                            ),
+                            .background(MaterialTheme.colorScheme.primary),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("AI", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Icon(
+                            Icons.Outlined.SmartToy,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp),
+                        )
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
@@ -589,7 +592,12 @@ fun SettingsScreen(
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("👁️", fontSize = 16.sp)
+                            Icon(
+                                Icons.Filled.Visibility,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.size(18.dp),
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 "该模型支持图像输入，截屏后可直接发送图片",
@@ -814,20 +822,12 @@ fun SettingsScreen(
                     .padding(horizontal = 16.dp)
                     .height(56.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                ),
                 contentPadding = PaddingValues(),
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.linearGradient(listOf(PrimaryPurple, PrimaryBlue)),
-                            shape = RoundedCornerShape(16.dp),
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("保存设置", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                }
+                Text("保存设置", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
 
             Spacer(modifier = Modifier.height(24.dp))

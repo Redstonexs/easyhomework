@@ -295,9 +295,9 @@ class AnswerPanelOverlay(
         val closeBtn = TextView(context).apply {
             text = "\u2715"
             setTextColor(onSurfaceVariantColor)
-            textSize = 18f
+            textSize = 20f
             gravity = Gravity.CENTER
-            setPadding(dp(16f).toInt(), dp(10f).toInt(), dp(16f).toInt(), dp(10f).toInt())
+            setPadding(dp(14f).toInt(), dp(10f).toInt(), dp(14f).toInt(), dp(10f).toInt())
             setOnClickListener { animateOut() }
         }
         headerLayout.addView(closeBtn)
@@ -334,8 +334,8 @@ class AnswerPanelOverlay(
             setPadding(dp(20f).toInt(), 0, dp(20f).toInt(), dp(8f).toInt())
         }
 
-        val copyBtn = createActionButton("复制") { copyLastAnswer() }
-        val regenBtn = createActionButton("重新生成") { regenerateAnswer() }
+        val copyBtn = createActionButton("📋 复制") { copyLastAnswer() }
+        val regenBtn = createActionButton("🔄 重新生成") { regenerateAnswer() }
         actionsRow.addView(copyBtn)
         actionsRow.addView(regenBtn)
         panelContainer.addView(actionsRow)
@@ -798,7 +798,7 @@ class AnswerPanelOverlay(
     }
 
     private fun createLoadingDots(): CharSequence {
-        return "⬤  ⬤  ⬤"
+        return "●  ●  ●"
     }
 
     private fun addThinkingBubble(): Pair<LinearLayout, TextView> {
