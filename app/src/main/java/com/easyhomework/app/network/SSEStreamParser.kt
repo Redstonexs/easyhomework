@@ -85,7 +85,9 @@ class SSEStreamParser {
             // Check for reasoning/thinking content (for models like o1, deepseek-r1)
             if (delta.has("reasoning_content")) {
                 val reasoning = delta.get("reasoning_content")
-                if (!reasoning.isJsonNull) {
+                // Skip null AND empty strings — empty strings in the final chunk
+                // would cause early return before finish_reason is checked
+                if (!reasoning.isJsonNull && reasoning.asString.isNotEmpty()) {
                     results.add(ParseResult.Thinking(reasoning.asString))
                 }
             }
@@ -93,7 +95,12 @@ class SSEStreamParser {
             // Check for regular content (may coexist with reasoning_content)
             if (delta.has("content")) {
                 val content = delta.get("content")
-                if (!content.isJsonNull) {
+                // Skip null AND empty strings — many OpenAI-compatible APIs
+                // (DeepSeek, Qwen, etc.) send a final chunk with content: ""
+                // alongside finish_reason. If we return Content("") here, we
+                // never reach the finish_reason check and tool call buffers
+                // are never flushed, causing tool calls to be silently dropped.
+                if (!content.isJsonNull && content.asString.isNotEmpty()) {
                     results.add(ParseResult.Content(content.asString))
                 }
             }
@@ -208,11 +215,12 @@ class SSEStreamParser {
                 "content_block_stop" -> {
                     // Check if this is the end of a tool use block
                     val bufferedToolCall = toolCallBuffers.values.firstOrNull()
-                    if (bufferedToolCall != null && bufferedToolCall.arguments.isNotEmpty()) {
+                    if (bufferedToolCall != null) {
+                        val args = bufferedToolCall.arguments.toString().ifEmpty { "{}" }
                         val result = ParseResult.ToolCall(ToolCall(
                             id = bufferedToolCall.id,
                             name = bufferedToolCall.name,
-                            arguments = bufferedToolCall.arguments.toString()
+                            arguments = args
                         ))
                         toolCallBuffers.clear()
                         return result
