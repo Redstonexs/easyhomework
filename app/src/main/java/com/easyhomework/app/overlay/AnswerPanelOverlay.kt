@@ -702,16 +702,23 @@ class AnswerPanelOverlay(
             val argsDisplay = parseToolCallArgs(toolCall)
             val toolName = getToolDisplayName(toolCall.name)
 
-            addToolCallBubble(toolName, argsDisplay)
+            // UI operations must run on main thread
+            withContext(Dispatchers.Main) {
+                addToolCallBubble(toolName, argsDisplay)
+            }
 
             val result = toolExecutor.execute(toolCall)
 
             messages.add(ChatMessage.toolResult(toolCall.id, result.content))
 
-            addToolResultBubble(result.content, result.isError)
+            // UI operations must run on main thread
+            withContext(Dispatchers.Main) {
+                addToolResultBubble(result.content, result.isError)
+            }
         }
 
-        handler.post {
+        // Switch to main thread for UI + sendToLLM (which launches its own coroutine)
+        withContext(Dispatchers.Main) {
             val newLoadingView = addAssistantBubble("", isLoading = true)
             sendToLLM(newLoadingView)
         }

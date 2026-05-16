@@ -44,7 +44,6 @@ class LLMRepository {
         .build()
 
     private val gson = Gson()
-    private val sseParser = SSEStreamParser()
 
     /**
      * Send a streaming chat completion request.
@@ -58,7 +57,7 @@ class LLMRepository {
     ): Flow<StreamEvent> = flow {
         emit(StreamEvent.Started)
 
-        sseParser.reset()
+        val sseParser = SSEStreamParser()
         val requestBody = buildRequestBody(config, messages, stream = true, tools = tools)
         val request = buildRequest(config, requestBody)
 
@@ -496,11 +495,17 @@ class LLMRepository {
                         )
                     )
                 }
-                apiMessages.add(mapOf(
+                // Many OpenAI-compatible APIs (DeepSeek, Qwen, etc.) require
+                // content to be null (absent) when tool_calls are present.
+                // Sending an empty string causes API errors.
+                val assistantMsg = mutableMapOf<String, Any>(
                     "role" to "assistant",
-                    "content" to msg.content,
                     "tool_calls" to toolCallsMap
-                ))
+                )
+                if (msg.content.isNotBlank()) {
+                    assistantMsg["content"] = msg.content
+                }
+                apiMessages.add(assistantMsg)
             } else if (msg.toolCallId != null) {
                 // Tool result message
                 apiMessages.add(mapOf(
@@ -547,7 +552,13 @@ class LLMRepository {
     ): String {
         val apiMessages = mutableListOf<Map<String, Any>>()
 
-        messages.filter { it.role != ChatMessage.ROLE_SYSTEM }.forEach { msg ->
+        // Anthropic requires strict role alternation (user/assistant/user/...).
+        // We must merge consecutive tool_result messages (role=tool) into a single
+        // "user" message with an array of tool_result content blocks.
+        val filteredMessages = messages.filter { it.role != ChatMessage.ROLE_SYSTEM }
+        var i = 0
+        while (i < filteredMessages.size) {
+            val msg = filteredMessages[i]
             if (msg.imageBitmap != null && config.supportsVision) {
                 // Multimodal message with image for Anthropic
                 val content = mutableListOf<Map<String, Any>>()
@@ -563,30 +574,49 @@ class LLMRepository {
                     content.add(mapOf("type" to "text", "text" to msg.content))
                 }
                 apiMessages.add(mapOf("role" to msg.role, "content" to content))
+                i++
             } else if (msg.toolCalls != null) {
-                // Assistant message with tool use
+                // Assistant message with tool use — include text block if present
                 val content = mutableListOf<Map<String, Any>>()
+                if (msg.content.isNotBlank()) {
+                    content.add(mapOf("type" to "text", "text" to msg.content))
+                }
                 msg.toolCalls.forEach { tc ->
+                    val inputObj = try {
+                        JsonParser.parseString(tc.arguments).asJsonObject
+                    } catch (e: Exception) {
+                        com.google.gson.JsonObject()
+                    }
                     content.add(mapOf(
                         "type" to "tool_use",
                         "id" to tc.id,
                         "name" to tc.name,
-                        "input" to JsonParser.parseString(tc.arguments).asJsonObject
+                        "input" to inputObj
                     ))
                 }
                 apiMessages.add(mapOf("role" to "assistant", "content" to content))
+                i++
             } else if (msg.toolCallId != null) {
-                // Tool result message
+                // Merge all consecutive tool_result messages into one "user" message
+                val toolResultBlocks = mutableListOf<Map<String, Any>>()
+                var j = i
+                while (j < filteredMessages.size && filteredMessages[j].toolCallId != null) {
+                    val toolMsg = filteredMessages[j]
+                    toolResultBlocks.add(mapOf(
+                        "type" to "tool_result",
+                        "tool_use_id" to (toolMsg.toolCallId ?: ""),
+                        "content" to toolMsg.content
+                    ))
+                    j++
+                }
                 apiMessages.add(mapOf(
                     "role" to "user",
-                    "content" to listOf(mapOf(
-                        "type" to "tool_result",
-                        "tool_use_id" to msg.toolCallId,
-                        "content" to msg.content
-                    ))
+                    "content" to toolResultBlocks
                 ))
+                i = j
             } else {
                 apiMessages.add(mapOf("role" to msg.role, "content" to msg.content))
+                i++
             }
         }
 
