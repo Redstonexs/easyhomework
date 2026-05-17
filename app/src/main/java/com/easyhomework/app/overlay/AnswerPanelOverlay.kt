@@ -518,13 +518,13 @@ class AnswerPanelOverlay(
         thinkingContainer = null
         thinkingExpanded = true
 
-        val tools = if (config.supportsFunctionCalling) ToolRegistry.getToolDefinitions() else emptyList()
+        val tools = ToolRegistry.getToolDefinitions()
         val requestMode = when {
             sendDirectImage -> "直接识图"
             recognizedText.isNotBlank() -> "OCR 识字"
             else -> "文本为空"
         }
-        val noResponseDetails = buildNoResponseDetails(config, requestMode)
+        val noResponseDetails = buildNoResponseDetails(config, requestMode, tools.size)
 
         scope.launch {
             if (config.stream) {
@@ -702,7 +702,7 @@ class AnswerPanelOverlay(
         }
     }
 
-    private fun buildNoResponseDetails(config: LLMConfig, requestMode: String): String {
+    private fun buildNoResponseDetails(config: LLMConfig, requestMode: String, toolCount: Int): String {
         val endpoint = "${config.apiEndpoint.trimEnd('/')}/${config.apiPath.trimStart('/')}"
         return """
             未收到有效响应，请重试。
@@ -711,7 +711,7 @@ class AnswerPanelOverlay(
             模型: ${config.modelName}
             地址: $endpoint
             流式输出: ${if (config.stream) "开启" else "关闭"}
-            工具调用: ${if (config.supportsFunctionCalling) "开启" else "关闭"}
+            工具定义: 已发送 $toolCount 个
             视觉能力: ${if (config.supportsVision || LLMConfig.modelSupportsVision(config.modelName)) "开启" else "关闭"}
             OCR 文本长度: ${recognizedText.length}
             说明: 连接已完成，但没有解析到回答正文、推理内容或工具调用。请检查模型是否支持当前请求格式，或关闭流式输出后重试。

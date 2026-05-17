@@ -42,13 +42,12 @@ class SSEStreamParser {
             return emptyList()
         }
 
-        // Must start with "data:" (with or without space after colon)
-        if (!trimmed.startsWith("data:")) {
-            return emptyList()
+        // Extract data payload - handle SSE and NDJSON-style streaming.
+        val data = when {
+            trimmed.startsWith("data:") -> trimmed.removePrefix("data:").trim()
+            trimmed.startsWith("{") -> trimmed
+            else -> return emptyList()
         }
-
-        // Extract data payload - handle both "data: {...}" and "data:{...}"
-        val data = trimmed.removePrefix("data:").trim()
 
         // Check for stream end signal
         if (data == "[DONE]") {
@@ -88,7 +87,7 @@ class SSEStreamParser {
             }
 
             val choice = choices[0].asJsonObject
-            val delta = choice.getAsJsonObject("delta")
+            val delta = objectValue(choice.get("delta"))
             val results = mutableListOf<ParseResult>()
 
             if (delta != null) {
@@ -109,20 +108,20 @@ class SSEStreamParser {
 
                 // Check for tool calls
                 if (delta.has("tool_calls")) {
-                    val toolCalls = delta.getAsJsonArray("tool_calls")
-                    for (tc in toolCalls) {
-                        val tcObj = tc.asJsonObject
-                        val index = tcObj.get("index")?.asInt ?: toolCallBuffers.size
+                    val toolCalls = arrayValue(delta.get("tool_calls")).orEmpty()
+                    for ((fallbackIndex, tc) in toolCalls.withIndex()) {
+                        val tcObj = objectValue(tc) ?: continue
+                        val index = intValue(tcObj.get("index")) ?: fallbackIndex
                         val buffer = toolCallBuffers.getOrPut(index) { ToolCallBuffer() }
 
-                        val id = tcObj.get("id")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                        val id = textValue(tcObj.get("id")).orEmpty()
                         if (id.isNotBlank()) buffer.id = id
 
-                        val function = tcObj.getAsJsonObject("function")
-                        val name = function?.get("name")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                        val function = objectValue(tcObj.get("function"))
+                        val name = textValue(function?.get("name")).orEmpty()
                         if (name.isNotBlank()) buffer.name = name
 
-                        val arguments = function?.get("arguments")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                        val arguments = argumentValue(function?.get("arguments"))
                         if (arguments.isNotEmpty()) {
                             buffer.arguments.append(arguments)
                         }
@@ -132,15 +131,15 @@ class SSEStreamParser {
                 // Older OpenAI-compatible servers may stream a single function_call
                 // instead of tool_calls. Treat it as one normal tool call.
                 if (delta.has("function_call")) {
-                    val function = delta.getAsJsonObject("function_call")
+                    val function = objectValue(delta.get("function_call"))
                     if (function != null) {
                         val buffer = toolCallBuffers.getOrPut(0) { ToolCallBuffer() }
                         if (buffer.id.isBlank()) buffer.id = "tool_call_0"
 
-                        val name = function.get("name")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                        val name = textValue(function.get("name")).orEmpty()
                         if (name.isNotBlank()) buffer.name = name
 
-                        val arguments = function.get("arguments")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                        val arguments = argumentValue(function.get("arguments"))
                         if (arguments.isNotEmpty()) buffer.arguments.append(arguments)
                     }
                 }
@@ -182,6 +181,8 @@ class SSEStreamParser {
         val results = mutableListOf<ParseResult>()
         val type = textValue(jsonObject.get("type")).orEmpty()
 
+        appendTopLevelToolEvents(jsonObject, results)
+
         when {
             type == "response.output_text.delta" || type == "response.text.delta" -> {
                 textValue(jsonObject.get("delta"))
@@ -197,7 +198,11 @@ class SSEStreamParser {
                 textValue(jsonObject.get("response"))
                     ?.takeIf { it.isNotEmpty() }
                     ?.let { results.add(ParseResult.Content(it)) }
+                results.addAll(flushToolCalls())
                 results.add(ParseResult.Done)
+            }
+            type == "response.output_item.done" || type == "response.function_call_arguments.done" -> {
+                results.addAll(flushToolCalls())
             }
             type == "response.failed" || type == "error" -> {
                 val message = textValue(jsonObject.get("error"))
@@ -218,6 +223,80 @@ class SSEStreamParser {
         }
 
         return results
+    }
+
+    private fun appendTopLevelToolEvents(jsonObject: JsonObject, results: MutableList<ParseResult>) {
+        arrayValue(jsonObject.get("tool_calls"))?.forEachIndexed { index, item ->
+            parseCompleteToolCall(item, index)?.let { results.add(ParseResult.ToolCall(it)) }
+        }
+
+        objectValue(jsonObject.get("function_call"))?.let { function ->
+            val name = textValue(function.get("name")).orEmpty()
+            if (name.isNotBlank()) {
+                results.add(
+                    ParseResult.ToolCall(
+                        ToolCall(
+                            id = textValue(jsonObject.get("id")) ?: "tool_call_0",
+                            name = name,
+                            arguments = argumentValue(function.get("arguments")).ifBlank { "{}" },
+                        ),
+                    ),
+                )
+            }
+        }
+
+        val type = textValue(jsonObject.get("type")).orEmpty()
+        val outputIndex = intValue(jsonObject.get("output_index")) ?: intValue(jsonObject.get("item_index")) ?: 0
+
+        objectValue(jsonObject.get("item"))
+            ?.takeIf { textValue(it.get("type")) == "function_call" }
+            ?.let { item ->
+                val buffer = toolCallBuffers.getOrPut(outputIndex) { ToolCallBuffer() }
+                val id = textValue(item.get("call_id")) ?: textValue(item.get("id"))
+                if (!id.isNullOrBlank()) buffer.id = id
+                textValue(item.get("name"))?.let { if (it.isNotBlank()) buffer.name = it }
+                argumentValue(item.get("arguments")).takeIf { it.isNotBlank() }?.let { buffer.arguments.append(it) }
+            }
+
+        if (type == "response.function_call_arguments.delta") {
+            argumentValue(jsonObject.get("delta")).takeIf { it.isNotBlank() }?.let {
+                toolCallBuffers.getOrPut(outputIndex) { ToolCallBuffer() }.arguments.append(it)
+            }
+        }
+    }
+
+    private fun parseCompleteToolCall(element: JsonElement, fallbackIndex: Int): ToolCall? {
+        val toolCallObj = objectValue(element) ?: return null
+        val function = objectValue(toolCallObj.get("function")) ?: toolCallObj
+        val name = textValue(function.get("name")).orEmpty()
+        if (name.isBlank()) return null
+
+        return ToolCall(
+            id = textValue(toolCallObj.get("id")) ?: textValue(toolCallObj.get("call_id")) ?: "tool_call_$fallbackIndex",
+            name = name,
+            arguments = argumentValue(function.get("arguments")).ifBlank { "{}" },
+        )
+    }
+
+    private fun objectValue(element: JsonElement?): JsonObject? {
+        return if (element != null && element.isJsonObject) element.asJsonObject else null
+    }
+
+    private fun arrayValue(element: JsonElement?): List<JsonElement>? {
+        return if (element != null && element.isJsonArray) element.asJsonArray.toList() else null
+    }
+
+    private fun intValue(element: JsonElement?): Int? {
+        return if (element != null && element.isJsonPrimitive && element.asJsonPrimitive.isNumber) {
+            element.asInt
+        } else {
+            null
+        }
+    }
+
+    private fun argumentValue(element: JsonElement?): String {
+        if (element == null || element.isJsonNull) return ""
+        return if (element.isJsonPrimitive) element.asString else element.toString()
     }
 
     private fun textValue(element: JsonElement?): String? {

@@ -898,9 +898,7 @@ class LLMRepository {
             body["reasoning_effort"] = config.thinkingDepth.openaiReasoningEffort
         }
 
-        // Add tools only when the active config allows them. Some domestic
-        // gateways accept the field but never return valid tool-call deltas.
-        if (config.supportsFunctionCalling && !tools.isNullOrEmpty()) {
+        if (!tools.isNullOrEmpty()) {
             body["tools"] = tools.map { it.toJson() }
             body["tool_choice"] = "auto"
         }
@@ -1018,7 +1016,7 @@ class LLMRepository {
             )
         }
 
-        if (config.supportsFunctionCalling && !tools.isNullOrEmpty()) {
+        if (!tools.isNullOrEmpty()) {
             body["tools"] = tools.map { tool ->
                 mapOf(
                     "name" to tool.name,
