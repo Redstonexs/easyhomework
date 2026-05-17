@@ -1,0 +1,341 @@
+<?xml version="1.0" encoding="utf-8"?>
+<baseline version="1.0">
+    <file name="src/main/java/com/easyhomework/app/EasyHomeworkApp.kt">
+        <error line="6" column="1" source="standard:no-unused-imports" />
+        <error line="26" column="47" source="standard:trailing-comma-on-call-site" />
+        <error line="35" column="47" source="standard:trailing-comma-on-call-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/MainActivity.kt">
+        <error line="3" column="1" source="standard:import-ordering" />
+        <error line="14" column="1" source="standard:no-wildcard-imports" />
+        <error line="34" column="57" source="standard:trailing-comma-on-call-site" />
+        <error line="44" column="52" source="standard:trailing-comma-on-call-site" />
+        <error line="62" column="65" source="standard:trailing-comma-on-call-site" />
+        <error line="86" column="26" source="standard:trailing-comma-on-call-site" />
+        <error line="99" column="50" source="standard:trailing-comma-on-call-site" />
+        <error line="119" column="5" source="standard:function-naming" />
+        <error line="122" column="30" source="standard:trailing-comma-on-declaration-site" />
+        <error line="136" column="46" source="standard:trailing-comma-on-call-site" />
+        <error line="145" column="18" source="standard:trailing-comma-on-call-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/data/AppDatabase.kt">
+        <error line="14" column="25" source="standard:trailing-comma-on-call-site" />
+        <error line="23" column="21" source="standard:property-naming" />
+        <error line="30" column="44" source="standard:trailing-comma-on-call-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/data/HistoryDao.kt">
+        <error line="3" column="1" source="standard:no-wildcard-imports" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/model/ChatMessage.kt">
+        <error line="11" column="22" source="standard:parameter-list-spacing" />
+        <error line="11" column="23" source="standard:no-multi-spaces" />
+        <error line="11" column="29" source="standard:discouraged-comment-location" />
+        <error line="13" column="37" source="standard:parameter-list-spacing" />
+        <error line="13" column="38" source="standard:no-multi-spaces" />
+        <error line="13" column="39" source="standard:discouraged-comment-location" />
+        <error line="14" column="43" source="standard:parameter-list-spacing" />
+        <error line="14" column="44" source="standard:no-multi-spaces" />
+        <error line="14" column="45" source="standard:discouraged-comment-location" />
+        <error line="15" column="36" source="standard:parameter-list-spacing" />
+        <error line="15" column="37" source="standard:no-multi-spaces" />
+        <error line="15" column="38" source="standard:discouraged-comment-location" />
+        <error line="17" column="37" source="standard:trailing-comma-on-declaration-site" />
+        <error line="17" column="38" source="standard:no-multi-spaces" />
+        <error line="17" column="39" source="standard:discouraged-comment-location" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/model/LLMConfig.kt">
+        <error line="8" column="34" source="standard:trailing-comma-on-declaration-site" />
+        <error line="25" column="31" source="standard:trailing-comma-on-declaration-site" />
+        <error line="55" column="42" source="standard:trailing-comma-on-declaration-site" />
+        <error line="82" column="21" source="standard:trailing-comma-on-call-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/model/ModelInfo.kt">
+        <error line="10" column="42" source="standard:trailing-comma-on-declaration-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/model/QueryHistory.kt">
+        <error line="19" column="32" source="standard:parameter-list-spacing" />
+        <error line="19" column="33" source="standard:no-multi-spaces" />
+        <error line="19" column="41" source="standard:discouraged-comment-location" />
+        <error line="20" column="32" source="standard:parameter-list-spacing" />
+        <error line="20" column="33" source="standard:no-multi-spaces" />
+        <error line="20" column="41" source="standard:discouraged-comment-location" />
+        <error line="21" column="43" source="standard:discouraged-comment-location" />
+        <error line="22" column="33" source="standard:trailing-comma-on-declaration-site" />
+        <error line="22" column="34" source="standard:no-multi-spaces" />
+        <error line="22" column="41" source="standard:discouraged-comment-location" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/network/LLMRepository.kt">
+        <error line="3" column="1" source="standard:import-ordering" />
+        <error line="62" column="38" source="standard:trailing-comma-on-declaration-site" />
+        <error line="168" column="44" source="standard:trailing-comma-on-declaration-site" />
+        <error line="181" column="49" source="standard:trailing-comma-on-call-site" />
+        <error line="216" column="75" source="standard:trailing-comma-on-call-site" />
+        <error line="221" column="44" source="standard:trailing-comma-on-call-site" />
+        <error line="246" column="60" source="standard:trailing-comma-on-call-site" />
+        <error line="330" column="80" source="standard:wrapping" />
+        <error line="347" column="33" source="standard:trailing-comma-on-call-site" />
+        <error line="396" column="37" source="standard:trailing-comma-on-declaration-site" />
+        <error line="420" column="25" source="standard:trailing-comma-on-declaration-site" />
+        <error line="543" column="34" source="standard:wrapping" />
+        <error line="572" column="35" source="standard:wrapping" />
+        <error line="575" column="90" source="standard:trailing-comma-on-call-site" />
+        <error line="576" column="21" source="standard:wrapping" />
+        <error line="610" column="44" source="standard:trailing-comma-on-declaration-site" />
+        <error line="622" column="44" source="standard:trailing-comma-on-declaration-site" />
+        <error line="635" column="29" source="standard:wrapping" />
+        <error line="639" column="43" source="standard:trailing-comma-on-call-site" />
+        <error line="640" column="22" source="standard:trailing-comma-on-call-site" />
+        <error line="641" column="17" source="standard:wrapping" />
+        <error line="654" column="56" source="standard:trailing-comma-on-call-site" />
+        <error line="655" column="26" source="standard:trailing-comma-on-call-site" />
+        <error line="663" column="49" source="standard:trailing-comma-on-call-site" />
+        <error line="669" column="33" source="standard:wrapping" />
+        <error line="672" column="45" source="standard:trailing-comma-on-call-site" />
+        <error line="673" column="17" source="standard:wrapping" />
+        <error line="683" column="31" source="standard:trailing-comma-on-call-site" />
+        <error line="710" column="44" source="standard:trailing-comma-on-declaration-site" />
+        <error line="725" column="29" source="standard:wrapping" />
+        <error line="730" column="66" source="standard:trailing-comma-on-call-site" />
+        <error line="731" column="22" source="standard:trailing-comma-on-call-site" />
+        <error line="732" column="17" source="standard:wrapping" />
+        <error line="750" column="33" source="standard:wrapping" />
+        <error line="754" column="44" source="standard:trailing-comma-on-call-site" />
+        <error line="755" column="21" source="standard:wrapping" />
+        <error line="765" column="42" source="standard:wrapping" />
+        <error line="768" column="53" source="standard:trailing-comma-on-call-site" />
+        <error line="769" column="21" source="standard:wrapping" />
+        <error line="772" column="33" source="standard:wrapping" />
+        <error line="774" column="50" source="standard:trailing-comma-on-call-site" />
+        <error line="775" column="17" source="standard:wrapping" />
+        <error line="787" column="31" source="standard:trailing-comma-on-call-site" />
+        <error line="804" column="69" source="standard:trailing-comma-on-call-site" />
+        <error line="813" column="54" source="standard:trailing-comma-on-call-site" />
+        <error line="839" column="21" source="standard:trailing-comma-on-call-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/network/SSEStreamParser.kt">
+        <error line="23" column="55" source="standard:trailing-comma-on-declaration-site" />
+        <error line="181" column="34" source="standard:wrapping" />
+        <error line="297" column="28" source="standard:multiline-if-else" />
+        <error line="307" column="28" source="standard:multiline-if-else" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/ocr/SmartRegionDetector.kt">
+        <error line="3" column="1" source="standard:import-ordering" />
+        <error line="21" column="55" source="standard:trailing-comma-on-call-site" />
+        <error line="38" column="42" source="standard:trailing-comma-on-call-site" />
+        <error line="43" column="48" source="standard:trailing-comma-on-call-site" />
+        <error line="54" column="43" source="standard:trailing-comma-on-call-site" />
+        <error line="64" column="39" source="standard:trailing-comma-on-call-site" />
+        <error line="73" column="42" source="standard:trailing-comma-on-call-site" />
+        <error line="76" column="44" source="standard:trailing-comma-on-call-site" />
+        <error line="82" column="26" source="standard:trailing-comma-on-declaration-site" />
+        <error line="91" column="57" source="standard:trailing-comma-on-call-site" />
+        <error line="109" column="25" source="standard:trailing-comma-on-declaration-site" />
+        <error line="111" column="50" source="standard:no-multi-spaces" />
+        <error line="112" column="47" source="standard:no-multi-spaces" />
+        <error line="113" column="49" source="standard:no-multi-spaces" />
+        <error line="119" column="1" source="standard:indent" />
+        <error line="120" column="1" source="standard:indent" />
+        <error line="121" column="1" source="standard:indent" />
+        <error line="122" column="1" source="standard:indent" />
+        <error line="123" column="1" source="standard:indent" />
+        <error line="124" column="1" source="standard:indent" />
+        <error line="134" column="25" source="standard:trailing-comma-on-declaration-site" />
+        <error line="176" column="25" source="standard:trailing-comma-on-declaration-site" />
+        <error line="198" column="58" source="standard:trailing-comma-on-call-site" />
+        <error line="205" column="25" source="standard:trailing-comma-on-declaration-site" />
+        <error line="209" column="33" source="standard:argument-list-wrapping" />
+        <error line="210" column="37" source="standard:argument-list-wrapping" />
+        <error line="210" column="56" source="standard:trailing-comma-on-call-site" />
+        <error line="223" column="27" source="standard:trailing-comma-on-declaration-site" />
+        <error line="229" column="47" source="standard:trailing-comma-on-declaration-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/ocr/TextRecognitionManager.kt">
+        <error line="3" column="1" source="standard:import-ordering" />
+        <error line="49" column="34" source="standard:trailing-comma-on-call-site" />
+        <error line="56" column="35" source="standard:trailing-comma-on-declaration-site" />
+        <error line="75" column="64" source="standard:trailing-comma-on-call-site" />
+        <error line="77" column="26" source="standard:trailing-comma-on-call-site" />
+        <error line="78" column="22" source="standard:trailing-comma-on-call-site" />
+        <error line="107" column="34" source="standard:trailing-comma-on-declaration-site" />
+        <error line="112" column="48" source="standard:trailing-comma-on-declaration-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/overlay/AnswerPanelOverlay.kt">
+        <error line="3" column="1" source="standard:import-ordering" />
+        <error line="8" column="1" source="standard:no-wildcard-imports" />
+        <error line="13" column="1" source="standard:no-wildcard-imports" />
+        <error line="18" column="1" source="standard:no-wildcard-imports" />
+        <error line="30" column="1" source="standard:no-wildcard-imports" />
+        <error line="378" column="24" source="standard:multiline-if-else" />
+        <error line="419" column="44" source="standard:argument-list-wrapping" />
+        <error line="1202" column="24" source="standard:multiline-if-else" />
+        <error line="1287" column="35" source="standard:string-template" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/overlay/FloatingBallView.kt">
+        <error line="5" column="1" source="standard:no-wildcard-imports" />
+        <error line="18" column="26" source="standard:trailing-comma-on-declaration-site" />
+        <error line="29" column="36" source="standard:trailing-comma-on-call-site" />
+        <error line="100" column="38" source="standard:trailing-comma-on-call-site" />
+        <error line="110" column="38" source="standard:trailing-comma-on-call-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/overlay/RegionSelectorOverlay.kt">
+        <error line="3" column="1" source="standard:import-ordering" />
+        <error line="5" column="1" source="standard:no-wildcard-imports" />
+        <error line="9" column="1" source="standard:no-unused-imports" />
+        <error line="13" column="1" source="standard:no-unused-imports" />
+        <error line="18" column="1" source="standard:no-wildcard-imports" />
+        <error line="35" column="35" source="standard:trailing-comma-on-declaration-site" />
+        <error line="99" column="15" source="standard:enum-wrapping" />
+        <error line="99" column="25" source="standard:enum-wrapping" />
+        <error line="99" column="30" source="standard:enum-wrapping" />
+        <error line="99" column="41" source="standard:enum-wrapping" />
+        <error line="99" column="48" source="standard:enum-wrapping" />
+        <error line="99" column="62" source="standard:enum-wrapping" />
+        <error line="99" column="70" source="standard:enum-wrapping" />
+        <error line="99" column="83" source="standard:enum-wrapping" />
+        <error line="116" column="38" source="standard:trailing-comma-on-call-site" />
+        <error line="143" column="16" source="standard:multiline-if-else" />
+        <error line="162" column="38" source="standard:trailing-comma-on-call-site" />
+        <error line="190" column="46" source="standard:trailing-comma-on-call-site" />
+        <error line="407" column="49" source="standard:trailing-comma-on-call-site" />
+        <error line="425" column="77" source="standard:trailing-comma-on-call-site" />
+        <error line="430" column="40" source="standard:argument-list-wrapping" />
+        <error line="431" column="43" source="standard:argument-list-wrapping" />
+        <error line="431" column="60" source="standard:trailing-comma-on-call-site" />
+        <error line="455" column="77" source="standard:trailing-comma-on-call-site" />
+        <error line="460" column="40" source="standard:argument-list-wrapping" />
+        <error line="461" column="43" source="standard:argument-list-wrapping" />
+        <error line="461" column="60" source="standard:trailing-comma-on-call-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/service/FloatingBallService.kt">
+        <error line="3" column="1" source="standard:import-ordering" />
+        <error line="143" column="1" source="standard:indent" />
+        <error line="144" column="36" source="standard:trailing-comma-on-call-site" />
+        <error line="147" column="60" source="standard:multiline-if-else" />
+        <error line="148" column="1" source="standard:indent" />
+        <error line="148" column="22" source="standard:multiline-if-else" />
+        <error line="336" column="1" source="standard:indent" />
+        <error line="337" column="36" source="standard:trailing-comma-on-call-site" />
+        <error line="371" column="1" source="standard:indent" />
+        <error line="372" column="1" source="standard:indent" />
+        <error line="373" column="40" source="standard:trailing-comma-on-call-site" />
+        <error line="399" column="19" source="standard:argument-list-wrapping" />
+        <error line="399" column="22" source="standard:argument-list-wrapping" />
+        <error line="400" column="78" source="standard:trailing-comma-on-call-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/service/ScreenCaptureService.kt">
+        <error line="3" column="1" source="standard:import-ordering" />
+        <error line="118" column="53" source="standard:trailing-comma-on-call-site" />
+        <error line="144" column="64" source="standard:trailing-comma-on-call-site" />
+        <error line="151" column="49" source="standard:trailing-comma-on-call-site" />
+        <error line="175" column="48" source="standard:trailing-comma-on-call-site" />
+        <error line="218" column="19" source="standard:argument-list-wrapping" />
+        <error line="218" column="22" source="standard:argument-list-wrapping" />
+        <error line="219" column="78" source="standard:trailing-comma-on-call-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/tools/ToolExecutor.kt">
+        <error line="3" column="1" source="standard:import-ordering" />
+        <error line="8" column="1" source="standard:no-wildcard-imports" />
+        <error line="27" column="39" source="standard:trailing-comma-on-call-site" />
+        <error line="34" column="35" source="standard:trailing-comma-on-call-site" />
+        <error line="133" column="70" source="standard:trailing-comma-on-call-site" />
+        <error line="142" column="36" source="standard:trailing-comma-on-call-site" />
+        <error line="157" column="56" source="standard:trailing-comma-on-call-site" />
+        <error line="167" column="27" source="standard:trailing-comma-on-call-site" />
+        <error line="179" column="43" source="standard:trailing-comma-on-call-site" />
+        <error line="189" column="69" source="standard:trailing-comma-on-call-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/tools/ToolRegistry.kt">
+        <error line="9" column="37" source="standard:trailing-comma-on-declaration-site" />
+        <error line="17" column="43" source="standard:trailing-comma-on-call-site" />
+        <error line="18" column="14" source="standard:trailing-comma-on-call-site" />
+        <error line="29" column="26" source="standard:trailing-comma-on-declaration-site" />
+        <error line="38" column="33" source="standard:trailing-comma-on-declaration-site" />
+        <error line="48" column="32" source="standard:trailing-comma-on-call-site" />
+        <error line="64" column="95" source="standard:trailing-comma-on-call-site" />
+        <error line="65" column="22" source="standard:trailing-comma-on-call-site" />
+        <error line="67" column="50" source="standard:trailing-comma-on-call-site" />
+        <error line="68" column="14" source="standard:trailing-comma-on-call-site" />
+        <error line="81" column="107" source="standard:trailing-comma-on-call-site" />
+        <error line="82" column="22" source="standard:trailing-comma-on-call-site" />
+        <error line="84" column="51" source="standard:trailing-comma-on-call-site" />
+        <error line="85" column="14" source="standard:trailing-comma-on-call-site" />
+        <error line="98" column="50" source="standard:trailing-comma-on-call-site" />
+        <error line="102" column="74" source="standard:trailing-comma-on-call-site" />
+        <error line="106" column="86" source="standard:trailing-comma-on-call-site" />
+        <error line="107" column="22" source="standard:trailing-comma-on-call-site" />
+        <error line="109" column="70" source="standard:trailing-comma-on-call-site" />
+        <error line="110" column="14" source="standard:trailing-comma-on-call-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/ui/components/Components.kt">
+        <error line="31" column="1" source="standard:no-unused-imports" />
+        <error line="32" column="1" source="standard:no-unused-imports" />
+        <error line="33" column="1" source="standard:no-unused-imports" />
+        <error line="40" column="1" source="standard:no-unused-imports" />
+        <error line="47" column="5" source="standard:function-naming" />
+        <error line="71" column="10" source="standard:trailing-comma-on-call-site" />
+        <error line="80" column="5" source="standard:function-naming" />
+        <error line="119" column="5" source="standard:function-naming" />
+        <error line="184" column="5" source="standard:function-naming" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/ui/screens/HistoryScreen.kt">
+        <error line="27" column="1" source="standard:no-unused-imports" />
+        <error line="49" column="1" source="standard:no-unused-imports" />
+        <error line="60" column="5" source="standard:function-naming" />
+        <error line="177" column="5" source="standard:function-naming" />
+        <error line="248" column="37" source="standard:multiline-if-else" />
+        <error line="250" column="37" source="standard:multiline-if-else" />
+        <error line="254" column="37" source="standard:multiline-if-else" />
+        <error line="256" column="37" source="standard:multiline-if-else" />
+        <error line="263" column="37" source="standard:multiline-if-else" />
+        <error line="265" column="37" source="standard:multiline-if-else" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/ui/screens/SettingsScreen.kt">
+        <error line="3" column="1" source="standard:import-ordering" />
+        <error line="4" column="1" source="standard:no-unused-imports" />
+        <error line="51" column="1" source="standard:no-unused-imports" />
+        <error line="64" column="1" source="standard:no-unused-imports" />
+        <error line="67" column="1" source="standard:no-unused-imports" />
+        <error line="104" column="5" source="standard:function-naming" />
+        <error line="209" column="37" source="standard:multiline-if-else" />
+        <error line="211" column="37" source="standard:multiline-if-else" />
+        <error line="508" column="61" source="standard:multiline-if-else" />
+        <error line="510" column="61" source="standard:multiline-if-else" />
+        <error line="557" column="53" source="standard:multiline-if-else" />
+        <error line="559" column="53" source="standard:multiline-if-else" />
+        <error line="856" column="5" source="standard:function-naming" />
+        <error line="866" column="5" source="standard:function-naming" />
+        <error line="875" column="5" source="standard:function-naming" />
+        <error line="888" column="5" source="standard:function-naming" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/ui/theme/Theme.kt">
+        <error line="50" column="5" source="standard:function-naming" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/ui/theme/Type.kt">
+        <error line="3" column="1" source="standard:import-ordering" />
+        <error line="15" column="34" source="standard:trailing-comma-on-call-site" />
+        <error line="21" column="27" source="standard:trailing-comma-on-call-site" />
+        <error line="27" column="27" source="standard:trailing-comma-on-call-site" />
+        <error line="33" column="27" source="standard:trailing-comma-on-call-site" />
+        <error line="40" column="32" source="standard:trailing-comma-on-call-site" />
+        <error line="47" column="31" source="standard:trailing-comma-on-call-site" />
+        <error line="54" column="32" source="standard:trailing-comma-on-call-site" />
+        <error line="61" column="31" source="standard:trailing-comma-on-call-site" />
+        <error line="68" column="31" source="standard:trailing-comma-on-call-site" />
+        <error line="75" column="31" source="standard:trailing-comma-on-call-site" />
+        <error line="76" column="6" source="standard:trailing-comma-on-call-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/util/PreferencesManager.kt">
+        <error line="28" column="72" source="standard:trailing-comma-on-call-site" />
+        <error line="57" column="57" source="standard:trailing-comma-on-call-site" />
+        <error line="100" column="82" source="standard:trailing-comma-on-call-site" />
+        <error line="172" column="74" source="standard:trailing-comma-on-call-site" />
+    </file>
+    <file name="src/main/java/com/easyhomework/app/viewmodel/SettingsViewModel.kt">
+        <error line="3" column="1" source="standard:import-ordering" />
+        <error line="44" column="30" source="standard:trailing-comma-on-call-site" />
+        <error line="66" column="60" source="standard:trailing-comma-on-call-site" />
+        <error line="154" column="18" source="standard:trailing-comma-on-call-site" />
+        <error line="164" column="42" source="standard:trailing-comma-on-declaration-site" />
+        <error line="170" column="48" source="standard:trailing-comma-on-call-site" />
+    </file>
+</baseline>

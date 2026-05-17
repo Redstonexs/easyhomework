@@ -2,6 +2,7 @@ package com.easyhomework.app.network
 
 import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.tools.ToolCall
+import com.google.gson.JsonElement
 import com.google.gson.JsonParser
 
 /**
@@ -87,28 +88,19 @@ class SSEStreamParser {
 
             if (delta != null) {
                 // Check for reasoning/thinking content (for models like o1, deepseek-r1)
-                if (delta.has("reasoning_content")) {
-                    val reasoning = delta.get("reasoning_content")
-                    if (!reasoning.isJsonNull && reasoning.asString.isNotEmpty()) {
-                        results.add(ParseResult.Thinking(reasoning.asString))
-                    }
-                }
+                textValue(delta.get("reasoning_content"))
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { results.add(ParseResult.Thinking(it)) }
 
                 // Some domestic OpenAI-compatible APIs use "reasoning" instead.
-                if (delta.has("reasoning")) {
-                    val reasoning = delta.get("reasoning")
-                    if (!reasoning.isJsonNull && reasoning.asString.isNotEmpty()) {
-                        results.add(ParseResult.Thinking(reasoning.asString))
-                    }
-                }
+                textValue(delta.get("reasoning"))
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { results.add(ParseResult.Thinking(it)) }
 
                 // Check for regular content (may coexist with reasoning/tool calls)
-                if (delta.has("content")) {
-                    val content = delta.get("content")
-                    if (!content.isJsonNull && content.asString.isNotEmpty()) {
-                        results.add(ParseResult.Content(content.asString))
-                    }
-                }
+                textValue(delta.get("content"))
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { results.add(ParseResult.Content(it)) }
 
                 // Check for tool calls
                 if (delta.has("tool_calls")) {
@@ -149,6 +141,24 @@ class SSEStreamParser {
                 }
             }
 
+            // Some OpenAI-compatible gateways ignore stream=true and send a full
+            // chat choice inside an SSE data frame instead of delta chunks.
+            val message = choice.getAsJsonObject("message")
+            textValue(message?.get("reasoning_content"))
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { results.add(ParseResult.Thinking(it)) }
+            textValue(message?.get("reasoning"))
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { results.add(ParseResult.Thinking(it)) }
+            textValue(message?.get("content"))
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { results.add(ParseResult.Content(it)) }
+
+            // Legacy completions-style streaming uses choices[].text.
+            textValue(choice.get("text"))
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { results.add(ParseResult.Content(it)) }
+
             // Check for finish reason
             if (choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull) {
                 results.addAll(flushToolCalls())
@@ -160,6 +170,25 @@ class SSEStreamParser {
             // Clear stale buffers on parse error to prevent state leaks
             toolCallBuffers.clear()
             emptyList()
+        }
+    }
+
+    private fun textValue(element: JsonElement?): String? {
+        if (element == null || element.isJsonNull) return null
+
+        return when {
+            element.isJsonPrimitive -> element.asString
+            element.isJsonArray -> element.asJsonArray
+                .mapNotNull { item -> textValue(item) }
+                .joinToString("")
+                .ifEmpty { null }
+            element.isJsonObject -> {
+                val obj = element.asJsonObject
+                textValue(obj.get("text"))
+                    ?: textValue(obj.get("content"))
+                    ?: textValue(obj.get("output_text"))
+            }
+            else -> null
         }
     }
 

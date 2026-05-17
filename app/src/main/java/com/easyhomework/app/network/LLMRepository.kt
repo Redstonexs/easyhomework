@@ -9,15 +9,21 @@ import com.easyhomework.app.model.ModelInfo
 import com.easyhomework.app.model.ThinkingDepth
 import com.easyhomework.app.tools.ToolCall
 import com.easyhomework.app.tools.ToolDefinition
-import com.easyhomework.app.tools.ToolRegistry
-import com.easyhomework.app.tools.ToolResult
 import com.google.gson.Gson
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
@@ -62,13 +68,17 @@ class LLMRepository {
         val request = buildRequest(config, requestBody)
 
         var call: Call? = null
-        scope?.coroutineContext?.let { ctx ->
-            ctx[kotlinx.coroutines.Job]?.invokeOnCompletion {
-                call?.cancel()
-            }
-        }
+        val cancellationHandles = mutableListOf<DisposableHandle>()
 
         try {
+            val currentJob = currentCoroutineContext()[Job]
+            currentJob?.let { job ->
+                cancellationHandles.add(job.invokeOnCompletion { call?.cancel() })
+            }
+            scope?.coroutineContext?.get(Job)
+                ?.takeIf { it !== currentJob }
+                ?.let { job -> cancellationHandles.add(job.invokeOnCompletion { call?.cancel() }) }
+
             call = client.newCall(request)
             val response = call.execute()
 
@@ -79,42 +89,73 @@ class LLMRepository {
                     return@flow
                 }
 
-                val reader = BufferedReader(
-                    InputStreamReader(resp.body?.byteStream() ?: run {
-                        emit(StreamEvent.Error("Empty response body"))
-                        return@flow
-                    })
-                )
+                val responseBody = resp.body ?: run {
+                    emit(StreamEvent.Error("Empty response body"))
+                    return@flow
+                }
+
+                val reader = BufferedReader(InputStreamReader(responseBody.byteStream()))
+
+                val fallbackBody = StringBuilder()
+                var streamEventReceived = false
+                var terminalError = false
 
                 reader.use { r ->
                     var line: String?
                     readLoop@ while (r.readLine().also { line = it } != null) {
-                        for (result in sseParser.parseLine(line.orEmpty(), config.apiType)) {
+                        val currentLine = line.orEmpty()
+                        appendFallbackPayload(fallbackBody, currentLine)
+
+                        for (result in sseParser.parseLine(currentLine, config.apiType)) {
                             when (result) {
                                 is SSEStreamParser.ParseResult.Content -> {
+                                    streamEventReceived = true
                                     emit(StreamEvent.Token(result.text))
                                 }
                                 is SSEStreamParser.ParseResult.Thinking -> {
+                                    streamEventReceived = true
                                     emit(StreamEvent.Thinking(result.text))
                                 }
                                 is SSEStreamParser.ParseResult.ToolCall -> {
+                                    streamEventReceived = true
                                     emit(StreamEvent.ToolCall(result.toolCall))
                                 }
                                 is SSEStreamParser.ParseResult.Done -> {
                                     break@readLoop
                                 }
                                 is SSEStreamParser.ParseResult.Error -> {
+                                    terminalError = true
                                     emit(StreamEvent.Error(result.message))
+                                    break@readLoop
                                 }
                             }
                         }
                     }
                 }
+
+                if (terminalError) {
+                    return@flow
+                }
+
+                if (!streamEventReceived) {
+                    if (emitFallbackResponse(fallbackBody.toString(), config.apiType) == FallbackEmission.ERROR) {
+                        return@flow
+                    }
+                }
             }
 
             emit(StreamEvent.Completed)
+        } catch (e: CancellationException) {
+            call?.cancel()
+            throw e
         } catch (e: Exception) {
+            if (!currentCoroutineContext().isActive) {
+                call?.cancel()
+                throw CancellationException("Request cancelled")
+            }
             emit(StreamEvent.Error("Network error: ${e.message}"))
+        } finally {
+            cancellationHandles.forEach { it.dispose() }
         }
     }.flowOn(Dispatchers.IO)
 
@@ -355,6 +396,12 @@ class LLMRepository {
         val thinking: String? = null
     )
 
+    private enum class FallbackEmission {
+        NONE,
+        RESPONSE,
+        ERROR,
+    }
+
     private fun parseFullResponse(body: String, apiType: ApiType): ChatResponse? {
         return try {
             val json = JsonParser.parseString(body).asJsonObject
@@ -368,25 +415,143 @@ class LLMRepository {
         }
     }
 
-    private fun parseOpenAIResponse(json: com.google.gson.JsonObject): ChatResponse? {
+    private suspend fun kotlinx.coroutines.flow.FlowCollector<StreamEvent>.emitFallbackResponse(
+        body: String,
+        apiType: ApiType
+    ): FallbackEmission {
+        val trimmedBody = body.trim()
+        if (trimmedBody.isEmpty()) return FallbackEmission.NONE
+
+        if (!trimmedBody.startsWith("{") && !trimmedBody.startsWith("[")) {
+            emit(StreamEvent.Token(trimmedBody))
+            return FallbackEmission.RESPONSE
+        }
+
+        val parsed = parseFullResponse(trimmedBody, apiType)
+        if (parsed != null) {
+            var emitted = false
+            parsed.thinking?.takeIf { it.isNotBlank() }?.let { emit(StreamEvent.Thinking(it)) }
+            parsed.thinking?.takeIf { it.isNotBlank() }?.let { emitted = true }
+            parsed.content?.takeIf { it.isNotBlank() }?.let {
+                emit(StreamEvent.Token(it))
+                emitted = true
+            }
+            parsed.toolCalls
+                ?.filter { it.name.isNotBlank() }
+                ?.forEach {
+                    emit(StreamEvent.ToolCall(it))
+                    emitted = true
+                }
+            return if (emitted) FallbackEmission.RESPONSE else FallbackEmission.NONE
+        }
+
+        parseErrorMessage(trimmedBody)?.let {
+            emit(StreamEvent.Error(it))
+            return FallbackEmission.ERROR
+        }
+
+        return FallbackEmission.NONE
+    }
+
+    private fun appendFallbackPayload(target: StringBuilder, line: String) {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || trimmed.startsWith(":")) return
+
+        val payload = if (trimmed.startsWith("data:")) {
+            trimmed.removePrefix("data:").trim()
+        } else if (trimmed.startsWith("event:") || trimmed.startsWith("id:") || trimmed.startsWith("retry:")) {
+            return
+        } else {
+            trimmed
+        }
+
+        if (payload.isEmpty() || payload == "[DONE]") return
+        if (target.isNotEmpty()) target.append('\n')
+        target.append(payload)
+    }
+
+    private fun parseErrorMessage(body: String): String? {
+        return try {
+            val json = JsonParser.parseString(body).asJsonObject
+            val error = json.get("error")
+            when {
+                error?.isJsonObject == true -> {
+                    val errorObj = error.asJsonObject
+                    textValue(errorObj.get("message"))
+                        ?: textValue(errorObj.get("code"))
+                        ?: textValue(errorObj.get("type"))
+                }
+                error != null && !error.isJsonNull -> textValue(error)
+                else -> textValue(json.get("message"))
+                    ?: textValue(json.get("msg"))
+                    ?: textValue(json.get("detail"))
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun parseOpenAIResponse(json: JsonObject): ChatResponse? {
         val choices = json.getAsJsonArray("choices") ?: return null
         if (choices.size() == 0) return null
 
-        val message = choices[0].asJsonObject.getAsJsonObject("message") ?: return null
-        val content = message.get("content")?.takeIf { !it.isJsonNull }?.asString
+        val choice = choices[0].asJsonObject
+        val message = objectValue(choice.get("message"))
+        val delta = objectValue(choice.get("delta"))
+        val content = textValue(message?.get("content"))
+            ?: textValue(delta?.get("content"))
+            ?: textValue(choice.get("text"))
+            ?: textValue(json.get("output_text"))
+        val thinking = textValue(message?.get("reasoning_content"))
+            ?: textValue(message?.get("reasoning"))
+            ?: textValue(delta?.get("reasoning_content"))
+            ?: textValue(delta?.get("reasoning"))
 
         // Parse tool calls
-        val toolCallsArray = message.getAsJsonArray("tool_calls")
+        val toolCallsArray = arrayValue(message?.get("tool_calls")) ?: arrayValue(delta?.get("tool_calls"))
         val toolCalls = toolCallsArray?.mapIndexedNotNull { index, tc ->
-            val function = tc.asJsonObject.getAsJsonObject("function")
-            val name = function?.get("name")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+            val toolCallObj = objectValue(tc) ?: return@mapIndexedNotNull null
+            val function = objectValue(toolCallObj.get("function"))
+            val name = textValue(function?.get("name")).orEmpty()
             if (name.isBlank()) return@mapIndexedNotNull null
-            val id = tc.asJsonObject.get("id")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
-            val arguments = function?.get("arguments")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+            val id = textValue(toolCallObj.get("id")).orEmpty()
+            val arguments = argumentValue(function?.get("arguments"))
             ToolCall(id = id.ifBlank { "tool_call_$index" }, name = name, arguments = arguments.ifBlank { "{}" })
         }
 
-        return ChatResponse(content = content, toolCalls = toolCalls)
+        return ChatResponse(content = content, toolCalls = toolCalls, thinking = thinking)
+    }
+
+    private fun objectValue(element: JsonElement?): JsonObject? {
+        return if (element != null && element.isJsonObject) element.asJsonObject else null
+    }
+
+    private fun arrayValue(element: JsonElement?): JsonArray? {
+        return if (element != null && element.isJsonArray) element.asJsonArray else null
+    }
+
+    private fun argumentValue(element: JsonElement?): String {
+        if (element == null || element.isJsonNull) return ""
+        return if (element.isJsonPrimitive) element.asString else element.toString()
+    }
+
+    private fun textValue(element: JsonElement?): String? {
+        if (element == null || element.isJsonNull) return null
+
+        return when {
+            element.isJsonPrimitive -> element.asString
+            element.isJsonArray -> element.asJsonArray
+                .mapNotNull { item -> textValue(item) }
+                .joinToString("")
+                .ifEmpty { null }
+            element.isJsonObject -> {
+                val obj = element.asJsonObject
+                textValue(obj.get("text"))
+                    ?: textValue(obj.get("content"))
+                    ?: textValue(obj.get("output_text"))
+            }
+            else -> null
+        }
     }
 
     private fun parseAnthropicResponse(json: com.google.gson.JsonObject): ChatResponse? {
@@ -457,13 +622,14 @@ class LLMRepository {
         tools: List<ToolDefinition>? = null
     ): String {
         val apiMessages = mutableListOf<Map<String, Any?>>()
+        val supportsImageInput = supportsImageInput(config)
 
         if (config.systemPrompt.isNotBlank()) {
             apiMessages.add(mapOf("role" to "system", "content" to config.systemPrompt))
         }
 
         messages.filter { it.role != ChatMessage.ROLE_SYSTEM }.forEach { msg ->
-            if (msg.imageBitmap != null && config.supportsVision) {
+            if (msg.imageBitmap != null && supportsImageInput) {
                 // Multimodal message with image
                 val content = mutableListOf<Map<String, Any>>()
                 content.add(mapOf(
@@ -544,6 +710,7 @@ class LLMRepository {
         tools: List<ToolDefinition>? = null
     ): String {
         val apiMessages = mutableListOf<Map<String, Any>>()
+        val supportsImageInput = supportsImageInput(config)
 
         // Anthropic requires strict role alternation (user/assistant/user/...).
         // We must merge consecutive tool_result messages (role=tool) into a single
@@ -552,7 +719,7 @@ class LLMRepository {
         var i = 0
         while (i < filteredMessages.size) {
             val msg = filteredMessages[i]
-            if (msg.imageBitmap != null && config.supportsVision) {
+            if (msg.imageBitmap != null && supportsImageInput) {
                 // Multimodal message with image for Anthropic
                 val content = mutableListOf<Map<String, Any>>()
                 content.add(mapOf(
@@ -649,6 +816,10 @@ class LLMRepository {
         }
 
         return gson.toJson(body)
+    }
+
+    private fun supportsImageInput(config: LLMConfig): Boolean {
+        return config.supportsVision || LLMConfig.modelSupportsVision(config.modelName)
     }
 
     private fun bitmapToBase64(bitmap: Bitmap): String {

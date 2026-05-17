@@ -74,6 +74,12 @@ class AnswerPanelOverlay(
     private var historyId: Long = -1
     private var conversationStarted = false
 
+    private companion object {
+        const val IMAGE_SOLVING_PROMPT = "请识别并解答图片中的题目，给出详细的解题步骤和最终答案。"
+        const val IMAGE_USER_PLACEHOLDER = "[图片题目]"
+        const val MAX_TOOL_CALL_DEPTH = 5
+    }
+
     // Views
     private lateinit var panelContainer: LinearLayout
     private lateinit var messagesContainer: LinearLayout
@@ -449,14 +455,15 @@ class AnswerPanelOverlay(
         val isVisionMode = sendDirectImage && (config.supportsVision || LLMConfig.modelSupportsVision(config.modelName))
 
         if (isVisionMode) {
-            val promptText = if (recognizedText.isNotBlank()) {
+            val requestText = if (recognizedText.isNotBlank()) {
                 recognizedText
             } else {
-                "请识别并解答图片中的题目，给出详细的解题步骤和最终答案。"
+                IMAGE_SOLVING_PROMPT
             }
-            val userMessage = ChatMessage.userWithImage(promptText, screenshotBitmap)
+            val displayText = recognizedText.ifBlank { IMAGE_USER_PLACEHOLDER }
+            val userMessage = ChatMessage.userWithImage(requestText, screenshotBitmap)
             messages.add(userMessage)
-            addUserBubbleWithImage(promptText)
+            addUserBubbleWithImage(displayText)
         } else {
             val userMessage = ChatMessage.user(recognizedText)
             messages.add(userMessage)
@@ -491,9 +498,6 @@ class AnswerPanelOverlay(
     private var thinkingExpanded = true
 
     private var toolCallDepth = 0
-    private companion object {
-        const val MAX_TOOL_CALL_DEPTH = 5
-    }
 
     private fun sendToLLM(loadingView: TextView) {
         val config = preferencesManager.getLLMConfig()
@@ -1192,16 +1196,29 @@ class AnswerPanelOverlay(
                     screenshotBitmap.compress(Bitmap.CompressFormat.PNG, 85, fos)
                 }
 
-                val preview = if (recognizedText.length > 60) {
-                    recognizedText.substring(0, 60) + "..."
-                } else recognizedText
+                val previewSource = recognizedText.ifBlank { IMAGE_USER_PLACEHOLDER }
+                val preview = if (previewSource.length > 60) {
+                    previewSource.substring(0, 60) + "..."
+                } else previewSource
+
+                val historyMessages = messages.map { message ->
+                    if (sendDirectImage &&
+                        message.role == ChatMessage.ROLE_USER &&
+                        message.imageBitmap != null &&
+                        message.content == IMAGE_SOLVING_PROMPT
+                    ) {
+                        message.copy(content = IMAGE_USER_PLACEHOLDER)
+                    } else {
+                        message
+                    }
+                }
 
                 val history = QueryHistory(
                     id = if (historyId > 0) historyId else 0,
                     screenshotPath = screenshotFile.absolutePath,
-                    recognizedText = if (sendDirectImage) "[图片] $recognizedText" else recognizedText,
-                    conversations = messages.toList(),
-                    previewText = if (sendDirectImage) " $preview" else preview,
+                    recognizedText = if (sendDirectImage) IMAGE_USER_PLACEHOLDER else recognizedText,
+                    conversations = historyMessages,
+                    previewText = preview,
                 )
 
                 historyId = database.historyDao().insertHistory(history)
