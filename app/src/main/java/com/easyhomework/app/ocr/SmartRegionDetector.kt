@@ -5,11 +5,11 @@ import android.graphics.Rect
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.max
 import kotlin.math.min
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
  * Detects the most likely "question" region in a screenshot using ML Kit text detection.
@@ -18,7 +18,7 @@ import kotlin.math.min
 class SmartRegionDetector {
 
     private val recognizer = TextRecognition.getClient(
-        ChineseTextRecognizerOptions.Builder().build()
+        ChineseTextRecognizerOptions.Builder().build(),
     )
 
     /**
@@ -35,12 +35,12 @@ class SmartRegionDetector {
                     bitmap.width / 8,
                     bitmap.height / 6,
                     bitmap.width * 7 / 8,
-                    bitmap.height * 5 / 6
+                    bitmap.height * 5 / 6,
                 )
                 return DetectionResult(
                     suggestedRegion = defaultRect,
                     confidence = 0.3f,
-                    allTextBlocks = emptyList()
+                    allTextBlocks = emptyList(),
                 )
             }
 
@@ -51,7 +51,7 @@ class SmartRegionDetector {
                 return DetectionResult(
                     suggestedRegion = mergeAllBlocks(blocks, bitmap.width, bitmap.height),
                     confidence = 0.4f,
-                    allTextBlocks = blocks
+                    allTextBlocks = blocks,
                 )
             }
 
@@ -61,7 +61,7 @@ class SmartRegionDetector {
             DetectionResult(
                 suggestedRegion = questionRegion,
                 confidence = 0.75f,
-                allTextBlocks = blocks
+                allTextBlocks = blocks,
             )
         } catch (e: Exception) {
             // Fallback to center region
@@ -70,16 +70,16 @@ class SmartRegionDetector {
                     bitmap.width / 8,
                     bitmap.height / 6,
                     bitmap.width * 7 / 8,
-                    bitmap.height * 5 / 6
+                    bitmap.height * 5 / 6,
                 ),
                 confidence = 0.2f,
-                allTextBlocks = emptyList()
+                allTextBlocks = emptyList(),
             )
         }
     }
 
     private suspend fun detectTextBlocks(
-        image: InputImage
+        image: InputImage,
     ): List<TextBlockInfo> = suspendCancellableCoroutine { continuation ->
         recognizer.process(image)
             .addOnSuccessListener { visionText ->
@@ -88,7 +88,7 @@ class SmartRegionDetector {
                         TextBlockInfo(
                             text = block.text,
                             rect = rect,
-                            lineCount = block.lines.size
+                            lineCount = block.lines.size,
                         )
                     }
                 }
@@ -106,22 +106,22 @@ class SmartRegionDetector {
     private fun filterContentBlocks(
         blocks: List<TextBlockInfo>,
         imageWidth: Int,
-        imageHeight: Int
+        imageHeight: Int,
     ): List<TextBlockInfo> {
-        val statusBarHeight = imageHeight * 0.05  // Top 5% is likely status bar
-        val navBarHeight = imageHeight * 0.08      // Bottom 8% is likely nav bar
-        val minBlockHeight = imageHeight * 0.01    // Too small blocks are UI elements
+        val statusBarHeight = imageHeight * 0.05 // Top 5% is likely status bar
+        val navBarHeight = imageHeight * 0.08 // Bottom 8% is likely nav bar
+        val minBlockHeight = imageHeight * 0.01 // Too small blocks are UI elements
 
         return blocks.filter { block ->
             val rect = block.rect
             // Not in status bar area
             rect.top > statusBarHeight &&
-            // Not in navigation bar area
-            rect.bottom < (imageHeight - navBarHeight) &&
-            // Not too small (likely UI labels)
-            (rect.height()) > minBlockHeight &&
-            // Has meaningful text content
-            block.text.length > 2
+                // Not in navigation bar area
+                rect.bottom < (imageHeight - navBarHeight) &&
+                // Not too small (likely UI labels)
+                (rect.height()) > minBlockHeight &&
+                // Has meaningful text content
+                block.text.length > 2
         }
     }
 
@@ -131,7 +131,7 @@ class SmartRegionDetector {
     private fun findDensestCluster(
         blocks: List<TextBlockInfo>,
         imageWidth: Int,
-        imageHeight: Int
+        imageHeight: Int,
     ): Rect {
         if (blocks.size <= 2) {
             return mergeAllBlocks(blocks, imageWidth, imageHeight)
@@ -173,7 +173,7 @@ class SmartRegionDetector {
     private fun mergeBlocks(
         blocks: List<TextBlockInfo>,
         imageWidth: Int,
-        imageHeight: Int
+        imageHeight: Int,
     ): Rect {
         var left = Int.MAX_VALUE
         var top = Int.MAX_VALUE
@@ -195,19 +195,21 @@ class SmartRegionDetector {
             max(0, (left - paddingH).toInt()),
             max(0, (top - paddingV).toInt()),
             min(imageWidth, (right + paddingH).toInt()),
-            min(imageHeight, (bottom + paddingV).toInt())
+            min(imageHeight, (bottom + paddingV).toInt()),
         )
     }
 
     private fun mergeAllBlocks(
         blocks: List<TextBlockInfo>,
         imageWidth: Int,
-        imageHeight: Int
+        imageHeight: Int,
     ): Rect {
         if (blocks.isEmpty()) {
             return Rect(
-                imageWidth / 8, imageHeight / 6,
-                imageWidth * 7 / 8, imageHeight * 5 / 6
+                imageWidth / 8,
+                imageHeight / 6,
+                imageWidth * 7 / 8,
+                imageHeight * 5 / 6,
             )
         }
         return mergeBlocks(blocks, imageWidth, imageHeight)
@@ -220,12 +222,12 @@ class SmartRegionDetector {
     data class TextBlockInfo(
         val text: String,
         val rect: Rect,
-        val lineCount: Int
+        val lineCount: Int,
     )
 
     data class DetectionResult(
         val suggestedRegion: Rect,
         val confidence: Float,
-        val allTextBlocks: List<TextBlockInfo>
+        val allTextBlocks: List<TextBlockInfo>,
     )
 }

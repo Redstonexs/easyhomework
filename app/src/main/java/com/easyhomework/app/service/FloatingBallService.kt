@@ -22,9 +22,9 @@ import com.easyhomework.app.EasyHomeworkApp
 import com.easyhomework.app.MainActivity
 import com.easyhomework.app.R
 import com.easyhomework.app.ScreenCapturePermissionActivity
+import com.easyhomework.app.overlay.AnswerPanelOverlay
 import com.easyhomework.app.overlay.FloatingBallView
 import com.easyhomework.app.overlay.RegionSelectorOverlay
-import com.easyhomework.app.overlay.AnswerPanelOverlay
 import com.easyhomework.app.util.PreferencesManager
 import kotlin.math.abs
 
@@ -140,12 +140,15 @@ class FloatingBallService : Service() {
             ballSizePx,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = if (preferencesManager.floatingBallX >= 0) preferencesManager.floatingBallX
-                else resources.displayMetrics.widthPixels - ballSizePx - 20
+            x = if (preferencesManager.floatingBallX >= 0) {
+                preferencesManager.floatingBallX
+            } else {
+                resources.displayMetrics.widthPixels - ballSizePx - 20
+            }
             y = preferencesManager.floatingBallY
         }
 
@@ -333,8 +336,8 @@ class FloatingBallService : Service() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT,
         )
 
         windowManager.addView(regionSelector, params)
@@ -368,9 +371,9 @@ class FloatingBallService : Service() {
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                PixelFormat.TRANSLUCENT
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT,
             )
 
             windowManager.addView(answerPanel, params)
@@ -396,8 +399,10 @@ class FloatingBallService : Service() {
     private fun createNotification(): Notification {
         val openIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            this,
+            0,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
         return NotificationCompat.Builder(this, EasyHomeworkApp.CHANNEL_FLOATING_BALL)

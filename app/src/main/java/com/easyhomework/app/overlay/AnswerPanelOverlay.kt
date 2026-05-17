@@ -1,7 +1,7 @@
 package com.easyhomework.app.overlay
 
-import android.annotation.SuppressLint
 import android.animation.ValueAnimator
+import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -16,7 +16,6 @@ import android.view.animation.OvershootInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.*
-import kotlin.math.abs
 import com.easyhomework.app.data.AppDatabase
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.LLMConfig
@@ -27,6 +26,7 @@ import com.easyhomework.app.tools.ToolExecutor
 import com.easyhomework.app.tools.ToolRegistry
 import com.easyhomework.app.util.PreferencesManager
 import io.noties.markwon.Markwon
+import kotlin.math.abs
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
 
@@ -375,7 +375,9 @@ class AnswerPanelOverlay(
                 if (actionId == EditorInfo.IME_ACTION_SEND) {
                     sendFollowUp()
                     true
-                } else false
+                } else {
+                    false
+                }
             }
         }
         inputContainer.addView(
@@ -416,7 +418,8 @@ class AnswerPanelOverlay(
             background = bg
             setPadding(dp(18f).toInt(), dp(10f).toInt(), dp(18f).toInt(), dp(10f).toInt())
             val params = LinearLayout.LayoutParams(
-                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT,
+                LayoutParams.WRAP_CONTENT,
+                LayoutParams.WRAP_CONTENT,
             ).apply {
                 marginEnd = dp(10f).toInt()
             }
@@ -516,6 +519,12 @@ class AnswerPanelOverlay(
         thinkingExpanded = true
 
         val tools = if (config.supportsFunctionCalling) ToolRegistry.getToolDefinitions() else emptyList()
+        val requestMode = when {
+            sendDirectImage -> "直接识图"
+            recognizedText.isNotBlank() -> "OCR 识字"
+            else -> "文本为空"
+        }
+        val noResponseDetails = buildNoResponseDetails(config, requestMode)
 
         scope.launch {
             if (config.stream) {
@@ -620,7 +629,12 @@ class AnswerPanelOverlay(
                                         messages.add(ChatMessage.assistant(fullText))
                                         updateBubbleText(loadingView, fullText, isLoading = false)
                                     } else if (!contentReceived) {
-                                        updateBubbleText(loadingView, "未收到有效响应，请重试", isLoading = false, isError = true)
+                                        updateBubbleText(
+                                            loadingView,
+                                            noResponseDetails,
+                                            isLoading = false,
+                                            isError = true,
+                                        )
                                     } else {
                                         handler.post {
                                             try {
@@ -686,6 +700,22 @@ class AnswerPanelOverlay(
                 )
             }
         }
+    }
+
+    private fun buildNoResponseDetails(config: LLMConfig, requestMode: String): String {
+        val endpoint = "${config.apiEndpoint.trimEnd('/')}/${config.apiPath.trimStart('/')}"
+        return """
+            未收到有效响应，请重试。
+            请求模式: $requestMode
+            API 类型: ${config.apiType.displayName}
+            模型: ${config.modelName}
+            地址: $endpoint
+            流式输出: ${if (config.stream) "开启" else "关闭"}
+            工具调用: ${if (config.supportsFunctionCalling) "开启" else "关闭"}
+            视觉能力: ${if (config.supportsVision || LLMConfig.modelSupportsVision(config.modelName)) "开启" else "关闭"}
+            OCR 文本长度: ${recognizedText.length}
+            说明: 连接已完成，但没有解析到回答正文、推理内容或工具调用。请检查模型是否支持当前请求格式，或关闭流式输出后重试。
+        """.trimIndent()
     }
 
     private suspend fun processToolCalls(fullText: String?, toolCalls: List<ToolCall>) {
@@ -1199,7 +1229,9 @@ class AnswerPanelOverlay(
                 val previewSource = recognizedText.ifBlank { IMAGE_USER_PLACEHOLDER }
                 val preview = if (previewSource.length > 60) {
                     previewSource.substring(0, 60) + "..."
-                } else previewSource
+                } else {
+                    previewSource
+                }
 
                 val historyMessages = messages.map { message ->
                     if (sendDirectImage &&
@@ -1284,7 +1316,7 @@ class AnswerPanelOverlay(
 
     private fun updateHeightIndicator(height: Int) {
         val ratio = (height.toFloat() / screenHeight * 100).toInt()
-        heightIndicator?.text = "${ratio}%"
+        heightIndicator?.text = "$ratio%"
     }
 
     private fun hideHeightIndicator() {

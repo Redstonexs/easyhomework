@@ -16,10 +16,10 @@ data class QueryHistory(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val timestamp: Long = System.currentTimeMillis(),
-    val screenshotPath: String,         // Path to the saved screenshot file
-    val recognizedText: String,         // OCR recognized text
+    val screenshotPath: String, // Path to the saved screenshot file
+    val recognizedText: String, // OCR recognized text
     val conversations: List<ChatMessage>, // Full conversation history
-    val previewText: String = ""        // Short preview of the question for list display
+    val previewText: String = "", // Short preview of the question for list display
 )
 
 /**

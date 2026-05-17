@@ -1,15 +1,15 @@
 package com.easyhomework.app.tools
 
-import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
+import kotlin.coroutines.coroutineContext
 import kotlin.math.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.coroutineContext
+import org.json.JSONObject
 
 class ToolExecutor {
 
@@ -24,14 +24,14 @@ class ToolExecutor {
                     else -> ToolResult(
                         toolCallId = toolCall.id,
                         content = "Unknown tool: ${toolCall.name}",
-                        isError = true
+                        isError = true,
                     )
                 }
             } catch (e: Exception) {
                 ToolResult(
                     toolCallId = toolCall.id,
                     content = "Error: ${e.message}",
-                    isError = true
+                    isError = true,
                 )
             }
         }
@@ -130,7 +130,7 @@ class ToolExecutor {
             "ft" to 0.3048, "foot" to 0.3048, "feet" to 0.3048,
             "yd" to 0.9144, "yard" to 0.9144, "yards" to 0.9144,
             "mi" to 1609.344, "mile" to 1609.344, "miles" to 1609.344,
-            "里" to 500.0, "丈" to 3.333, "尺" to 0.3333, "寸" to 0.03333
+            "里" to 500.0, "丈" to 3.333, "尺" to 0.3333, "寸" to 0.03333,
         )
         convertWithFactors(value, from, to, length)?.let { return it }
 
@@ -139,7 +139,7 @@ class ToolExecutor {
             "mg" to 0.000001, "g" to 0.001, "kg" to 1.0, "t" to 1000.0, "ton" to 1000.0, "tons" to 1000.0,
             "oz" to 0.0283495, "ounce" to 0.0283495, "ounces" to 0.0283495,
             "lb" to 0.453592, "lbs" to 0.453592, "pound" to 0.453592, "pounds" to 0.453592,
-            "斤" to 0.5, "两" to 0.05
+            "斤" to 0.5, "两" to 0.05,
         )
         convertWithFactors(value, from, to, weight)?.let { return it }
 
@@ -154,7 +154,7 @@ class ToolExecutor {
             ("celsius" to "kelvin") to { v: Double -> v + 273.15 },
             ("c" to "k") to { v: Double -> v + 273.15 },
             ("kelvin" to "celsius") to { v: Double -> v - 273.15 },
-            ("k" to "c") to { v: Double -> v - 273.15 }
+            ("k" to "c") to { v: Double -> v - 273.15 },
         )
         tempConversions[Pair(from, to)]?.let { return it(value) }
 
@@ -164,7 +164,7 @@ class ToolExecutor {
             "in2" to 0.00064516, "ft2" to 0.092903, "yd2" to 0.836127,
             "acre" to 4046.86, "acres" to 4046.86,
             "hectare" to 10000.0, "ha" to 10000.0,
-            "亩" to 666.667
+            "亩" to 666.667,
         )
         convertWithFactors(value, from, to, area)?.let { return it }
 
@@ -176,7 +176,7 @@ class ToolExecutor {
             "pt" to 0.473176, "pint" to 0.473176,
             "cup" to 0.236588, "cups" to 0.236588,
             "fl_oz" to 0.0295735, "floz" to 0.0295735,
-            "ml" to 0.001, "立方米" to 1000.0
+            "ml" to 0.001, "立方米" to 1000.0,
         )
         convertWithFactors(value, from, to, volume)?.let { return it }
 
@@ -186,7 +186,7 @@ class ToolExecutor {
             "min" to 60.0, "minute" to 60.0, "minutes" to 60.0,
             "h" to 3600.0, "hr" to 3600.0, "hour" to 3600.0, "hours" to 3600.0,
             "d" to 86400.0, "day" to 86400.0, "days" to 86400.0,
-            "w" to 604800.0, "week" to 604800.0, "weeks" to 604800.0
+            "w" to 604800.0, "week" to 604800.0, "weeks" to 604800.0,
         )
         convertWithFactors(value, from, to, time)?.let { return it }
 

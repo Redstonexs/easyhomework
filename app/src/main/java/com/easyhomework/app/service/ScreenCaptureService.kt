@@ -12,13 +12,13 @@ import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.Build
 import android.util.DisplayMetrics
-import android.view.WindowMetrics
 import android.view.WindowManager
+import android.view.WindowMetrics
 import androidx.core.app.NotificationCompat
 import com.easyhomework.app.EasyHomeworkApp
 import com.easyhomework.app.MainActivity
@@ -115,7 +115,7 @@ class ScreenCaptureService : Service() {
 
             if (resultCode != 0 && resultData != null && mediaProjection == null) {
                 val projectionManager = getSystemService(
-                    Context.MEDIA_PROJECTION_SERVICE
+                    Context.MEDIA_PROJECTION_SERVICE,
                 ) as MediaProjectionManager
 
                 mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
@@ -141,14 +141,14 @@ class ScreenCaptureService : Service() {
 
     private fun setupImageReader() {
         imageReader = ImageReader.newInstance(
-            screenWidth, screenHeight, PixelFormat.RGBA_8888, 2
+            screenWidth, screenHeight, PixelFormat.RGBA_8888, 2,
         )
 
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "EasyHomeworkCapture",
             screenWidth, screenHeight, screenDensity,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader!!.surface, null, handler
+            imageReader!!.surface, null, handler,
         )
     }
 
@@ -172,7 +172,7 @@ class ScreenCaptureService : Service() {
                     val bitmap = Bitmap.createBitmap(
                         screenWidth + rowPadding / pixelStride,
                         screenHeight,
-                        Bitmap.Config.ARGB_8888
+                        Bitmap.Config.ARGB_8888,
                     )
                     bitmap.copyPixelsFromBuffer(buffer)
                     image.close()
@@ -215,8 +215,10 @@ class ScreenCaptureService : Service() {
     private fun createNotification(): Notification {
         val openIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            this,
+            0,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
         return NotificationCompat.Builder(this, EasyHomeworkApp.CHANNEL_SCREEN_CAPTURE)

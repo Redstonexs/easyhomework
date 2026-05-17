@@ -14,10 +14,14 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
+import java.io.InputStreamReader
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
@@ -30,10 +34,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.ByteArrayOutputStream
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.util.concurrent.TimeUnit
 
 /**
  * Repository for LLM API calls with streaming support.
@@ -59,7 +59,7 @@ class LLMRepository {
         config: LLMConfig,
         messages: List<ChatMessage>,
         tools: List<ToolDefinition>? = null,
-        scope: CoroutineScope? = null
+        scope: CoroutineScope? = null,
     ): Flow<StreamEvent> = flow {
         emit(StreamEvent.Started)
 
@@ -99,12 +99,17 @@ class LLMRepository {
                 val fallbackBody = StringBuilder()
                 var streamEventReceived = false
                 var terminalError = false
+                var lineCount = 0
+                var payloadCount = 0
 
                 reader.use { r ->
                     var line: String?
                     readLoop@ while (r.readLine().also { line = it } != null) {
                         val currentLine = line.orEmpty()
-                        appendFallbackPayload(fallbackBody, currentLine)
+                        lineCount++
+                        if (appendFallbackPayload(fallbackBody, currentLine)) {
+                            payloadCount++
+                        }
 
                         for (result in sseParser.parseLine(currentLine, config.apiType)) {
                             when (result) {
@@ -138,8 +143,24 @@ class LLMRepository {
                 }
 
                 if (!streamEventReceived) {
-                    if (emitFallbackResponse(fallbackBody.toString(), config.apiType) == FallbackEmission.ERROR) {
-                        return@flow
+                    when (emitFallbackResponse(fallbackBody.toString(), config.apiType)) {
+                        FallbackEmission.RESPONSE -> Unit
+                        FallbackEmission.ERROR -> return@flow
+                        FallbackEmission.NONE -> {
+                            emit(
+                                StreamEvent.Error(
+                                    buildNoValidResponseError(
+                                        config = config,
+                                        statusCode = resp.code,
+                                        contentType = resp.header("Content-Type"),
+                                        lineCount = lineCount,
+                                        payloadCount = payloadCount,
+                                        payload = fallbackBody.toString(),
+                                    ),
+                                ),
+                            )
+                            return@flow
+                        }
                     }
                 }
             }
@@ -165,7 +186,7 @@ class LLMRepository {
     suspend fun chatCompletion(
         config: LLMConfig,
         messages: List<ChatMessage>,
-        tools: List<ToolDefinition>? = null
+        tools: List<ToolDefinition>? = null,
     ): Result<ChatResponse> = withContext(Dispatchers.IO) {
         try {
             val requestBody = buildRequestBody(config, messages, stream = false, tools = tools)
@@ -178,11 +199,23 @@ class LLMRepository {
             }
 
             val responseBody = response.body?.string() ?: return@withContext Result.failure(
-                Exception("Empty response body")
+                Exception("Empty response body"),
             )
 
             val chatResponse = parseFullResponse(responseBody, config.apiType)
-                ?: return@withContext Result.failure(Exception("Failed to parse response"))
+                ?.takeIf { it.hasPayload() }
+                ?: return@withContext Result.failure(
+                    Exception(
+                        buildNoValidResponseError(
+                            config = config,
+                            statusCode = response.code,
+                            contentType = response.header("Content-Type"),
+                            lineCount = responseBody.lineSequence().count(),
+                            payloadCount = 1,
+                            payload = responseBody,
+                        ),
+                    ),
+                )
 
             Result.success(chatResponse)
         } catch (e: Exception) {
@@ -213,12 +246,12 @@ class LLMRepository {
 
             if (!response.isSuccessful) {
                 return@withContext Result.failure(
-                    Exception("Failed to fetch models (${response.code})")
+                    Exception("Failed to fetch models (${response.code})"),
                 )
             }
 
             val body = response.body?.string() ?: return@withContext Result.failure(
-                Exception("Empty response")
+                Exception("Empty response"),
             )
 
             val models = parseModelsResponse(body, config.apiType)
@@ -243,7 +276,7 @@ class LLMRepository {
                         id = id,
                         supportsVision = supportsVision,
                         supportsFunctionCalling = supportsFunctionCalling,
-                        supportsThinking = supportsThinking
+                        supportsThinking = supportsThinking,
                     )
                 }
                 .filterNotNull()
@@ -327,7 +360,8 @@ class LLMRepository {
 
         // OpenAI models that support function calling
         if (lower.contains("gpt-4") || lower.contains("gpt-3.5-turbo") ||
-            lower.contains("o1") || lower.contains("o3") || lower.contains("o4")) {
+            lower.contains("o1") || lower.contains("o3") || lower.contains("o4")
+        ) {
             return true
         }
 
@@ -344,7 +378,7 @@ class LLMRepository {
             "qwen-max", "qwen-plus", "qwen-turbo",
             "deepseek-chat", "deepseek-coder",
             "glm-4", "glm-3",
-            "mistral", "mixtral"
+            "mistral", "mixtral",
         )
 
         return functionCallingPatterns.any { lower.contains(it) }
@@ -393,8 +427,12 @@ class LLMRepository {
     data class ChatResponse(
         val content: String?,
         val toolCalls: List<ToolCall>?,
-        val thinking: String? = null
-    )
+        val thinking: String? = null,
+    ) {
+        fun hasPayload(): Boolean {
+            return !content.isNullOrBlank() || !thinking.isNullOrBlank() || !toolCalls.isNullOrEmpty()
+        }
+    }
 
     private enum class FallbackEmission {
         NONE,
@@ -404,20 +442,45 @@ class LLMRepository {
 
     private fun parseFullResponse(body: String, apiType: ApiType): ChatResponse? {
         return try {
-            val json = JsonParser.parseString(body).asJsonObject
-
-            when (apiType) {
-                ApiType.OPENAI -> parseOpenAIResponse(json)
-                ApiType.ANTHROPIC -> parseAnthropicResponse(json)
-            }
+            parseResponseElement(JsonParser.parseString(body), apiType)
         } catch (e: Exception) {
             null
         }
     }
 
+    private fun parseResponseElement(element: JsonElement, apiType: ApiType): ChatResponse? {
+        return when {
+            element.isJsonArray -> {
+                val responses = element.asJsonArray.mapNotNull { parseResponseElement(it, apiType) }
+                mergeResponses(responses)
+            }
+            element.isJsonObject -> {
+                val json = element.asJsonObject
+                val typed = when (apiType) {
+                    ApiType.OPENAI -> parseOpenAIResponse(json)
+                    ApiType.ANTHROPIC -> parseAnthropicResponse(json)
+                }
+                typed?.takeIf { it.hasPayload() } ?: parseGenericResponse(json)
+            }
+            else -> textValue(element)
+                ?.takeIf { it.isNotBlank() }
+                ?.let { ChatResponse(content = it, toolCalls = null) }
+        }
+    }
+
+    private fun mergeResponses(responses: List<ChatResponse>): ChatResponse? {
+        if (responses.isEmpty()) return null
+
+        val content = responses.mapNotNull { it.content }.joinToString("").ifBlank { null }
+        val thinking = responses.mapNotNull { it.thinking }.joinToString("").ifBlank { null }
+        val toolCalls = responses.flatMap { it.toolCalls.orEmpty() }.ifEmpty { null }
+        return ChatResponse(content = content, thinking = thinking, toolCalls = toolCalls)
+            .takeIf { it.hasPayload() }
+    }
+
     private suspend fun kotlinx.coroutines.flow.FlowCollector<StreamEvent>.emitFallbackResponse(
         body: String,
-        apiType: ApiType
+        apiType: ApiType,
     ): FallbackEmission {
         val trimmedBody = body.trim()
         if (trimmedBody.isEmpty()) return FallbackEmission.NONE
@@ -429,20 +492,7 @@ class LLMRepository {
 
         val parsed = parseFullResponse(trimmedBody, apiType)
         if (parsed != null) {
-            var emitted = false
-            parsed.thinking?.takeIf { it.isNotBlank() }?.let { emit(StreamEvent.Thinking(it)) }
-            parsed.thinking?.takeIf { it.isNotBlank() }?.let { emitted = true }
-            parsed.content?.takeIf { it.isNotBlank() }?.let {
-                emit(StreamEvent.Token(it))
-                emitted = true
-            }
-            parsed.toolCalls
-                ?.filter { it.name.isNotBlank() }
-                ?.forEach {
-                    emit(StreamEvent.ToolCall(it))
-                    emitted = true
-                }
-            return if (emitted) FallbackEmission.RESPONSE else FallbackEmission.NONE
+            return emitChatResponse(parsed)
         }
 
         parseErrorMessage(trimmedBody)?.let {
@@ -450,24 +500,92 @@ class LLMRepository {
             return FallbackEmission.ERROR
         }
 
+        val lineResponses = trimmedBody.lineSequence()
+            .map { it.trim() }
+            .filter { it.startsWith("{") || it.startsWith("[") }
+            .mapNotNull { line -> parseFullResponse(line, apiType) }
+            .toList()
+
+        mergeResponses(lineResponses)?.let { response ->
+            return emitChatResponse(response)
+        }
+
+        trimmedBody.lineSequence()
+            .mapNotNull { line -> parseErrorMessage(line.trim()) }
+            .firstOrNull()
+            ?.let {
+                emit(StreamEvent.Error(it))
+                return FallbackEmission.ERROR
+            }
+
         return FallbackEmission.NONE
     }
 
-    private fun appendFallbackPayload(target: StringBuilder, line: String) {
+    private suspend fun kotlinx.coroutines.flow.FlowCollector<StreamEvent>.emitChatResponse(
+        response: ChatResponse,
+    ): FallbackEmission {
+        var emitted = false
+
+        response.thinking?.takeIf { it.isNotBlank() }?.let {
+            emit(StreamEvent.Thinking(it))
+            emitted = true
+        }
+        response.content?.takeIf { it.isNotBlank() }?.let {
+            emit(StreamEvent.Token(it))
+            emitted = true
+        }
+        response.toolCalls
+            ?.filter { it.name.isNotBlank() }
+            ?.forEach {
+                emit(StreamEvent.ToolCall(it))
+                emitted = true
+            }
+
+        return if (emitted) FallbackEmission.RESPONSE else FallbackEmission.NONE
+    }
+
+    private fun appendFallbackPayload(target: StringBuilder, line: String): Boolean {
         val trimmed = line.trim()
-        if (trimmed.isEmpty() || trimmed.startsWith(":")) return
+        if (trimmed.isEmpty() || trimmed.startsWith(":")) return false
 
         val payload = if (trimmed.startsWith("data:")) {
             trimmed.removePrefix("data:").trim()
         } else if (trimmed.startsWith("event:") || trimmed.startsWith("id:") || trimmed.startsWith("retry:")) {
-            return
+            return false
         } else {
             trimmed
         }
 
-        if (payload.isEmpty() || payload == "[DONE]") return
+        if (payload.isEmpty() || payload == "[DONE]") return false
         if (target.isNotEmpty()) target.append('\n')
         target.append(payload)
+        return true
+    }
+
+    private fun buildNoValidResponseError(
+        config: LLMConfig,
+        statusCode: Int,
+        contentType: String?,
+        lineCount: Int,
+        payloadCount: Int,
+        payload: String,
+    ): String {
+        val endpoint = "${config.apiEndpoint.trimEnd('/')}/${config.apiPath.trimStart('/')}"
+        val sample = payload.trim()
+            .ifBlank { "<空响应体>" }
+            .let { if (it.length > RESPONSE_SAMPLE_LIMIT) it.take(RESPONSE_SAMPLE_LIMIT) + "..." else it }
+
+        return """
+            未收到有效响应，请检查 API 返回格式。
+            API 类型: ${config.apiType.displayName}
+            模型: ${config.modelName}
+            地址: $endpoint
+            HTTP 状态: $statusCode
+            Content-Type: ${contentType?.ifBlank { "<未返回>" } ?: "<未返回>"}
+            已读取行数: $lineCount，候选响应片段: $payloadCount
+            响应片段: $sample
+            解析说明: 未找到可用的 answer/content/text/output_text、OpenAI choices[].message.content、choices[].delta.content、Anthropic content[].text 或 tool_calls。
+        """.trimIndent()
     }
 
     private fun parseErrorMessage(body: String): String? {
@@ -492,6 +610,8 @@ class LLMRepository {
     }
 
     private fun parseOpenAIResponse(json: JsonObject): ChatResponse? {
+        parseOpenAIResponsesApi(json)?.takeIf { it.hasPayload() }?.let { return it }
+
         val choices = json.getAsJsonArray("choices") ?: return null
         if (choices.size() == 0) return null
 
@@ -522,6 +642,84 @@ class LLMRepository {
         return ChatResponse(content = content, toolCalls = toolCalls, thinking = thinking)
     }
 
+    private fun parseOpenAIResponsesApi(json: JsonObject): ChatResponse? {
+        val outputText = textValue(json.get("output_text"))
+        val output = arrayValue(json.get("output"))
+        if (output == null) {
+            return outputText?.takeIf { it.isNotBlank() }?.let {
+                ChatResponse(content = it, toolCalls = null)
+            }
+        }
+
+        val contentParts = mutableListOf<String>()
+        val thinkingParts = mutableListOf<String>()
+        val toolCalls = mutableListOf<ToolCall>()
+
+        output.forEachIndexed { index, item ->
+            val itemObj = objectValue(item) ?: return@forEachIndexed
+            when (textValue(itemObj.get("type"))) {
+                "message" -> arrayValue(itemObj.get("content"))?.forEach { block ->
+                    val blockObj = objectValue(block) ?: return@forEach
+                    textValue(blockObj.get("text"))?.let { contentParts.add(it) }
+                }
+                "reasoning" -> {
+                    textValue(itemObj.get("summary"))?.let { thinkingParts.add(it) }
+                    textValue(itemObj.get("content"))?.let { thinkingParts.add(it) }
+                }
+                "function_call" -> {
+                    val name = textValue(itemObj.get("name")).orEmpty()
+                    if (name.isNotBlank()) {
+                        toolCalls.add(
+                            ToolCall(
+                                id = textValue(itemObj.get("call_id"))
+                                    ?: textValue(itemObj.get("id"))
+                                    ?: "tool_call_$index",
+                                name = name,
+                                arguments = argumentValue(itemObj.get("arguments")).ifBlank { "{}" },
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        return ChatResponse(
+            content = contentParts.joinToString("").ifBlank { outputText },
+            thinking = thinkingParts.joinToString("").ifBlank { null },
+            toolCalls = toolCalls.ifEmpty { null },
+        ).takeIf { it.hasPayload() }
+    }
+
+    private fun parseGenericResponse(json: JsonObject): ChatResponse? {
+        val data = objectValue(json.get("data"))
+        val message = objectValue(json.get("message"))
+        val result = objectValue(json.get("result"))
+
+        val content = textValue(json.get("answer"))
+            ?: textValue(json.get("content"))
+            ?: textValue(json.get("text"))
+            ?: textValue(json.get("response"))
+            ?: textValue(json.get("result"))
+            ?: textValue(json.get("output"))
+            ?: textValue(json.get("output_text"))
+            ?: textValue(message?.get("content"))
+            ?: textValue(message?.get("text"))
+            ?: textValue(data?.get("answer"))
+            ?: textValue(data?.get("content"))
+            ?: textValue(data?.get("text"))
+            ?: textValue(data?.get("response"))
+            ?: textValue(result?.get("answer"))
+            ?: textValue(result?.get("content"))
+            ?: textValue(result?.get("text"))
+
+        val thinking = textValue(json.get("reasoning"))
+            ?: textValue(json.get("reasoning_content"))
+            ?: textValue(json.get("thinking"))
+
+        return ChatResponse(content = content, thinking = thinking, toolCalls = null)
+            .takeIf { it.hasPayload() }
+    }
+
     private fun objectValue(element: JsonElement?): JsonObject? {
         return if (element != null && element.isJsonObject) element.asJsonObject else null
     }
@@ -540,10 +738,11 @@ class LLMRepository {
 
         return when {
             element.isJsonPrimitive -> element.asString
-            element.isJsonArray -> element.asJsonArray
-                .mapNotNull { item -> textValue(item) }
-                .joinToString("")
-                .ifEmpty { null }
+            element.isJsonArray ->
+                element.asJsonArray
+                    .mapNotNull { item -> textValue(item) }
+                    .joinToString("")
+                    .ifEmpty { null }
             element.isJsonObject -> {
                 val obj = element.asJsonObject
                 textValue(obj.get("text"))
@@ -569,11 +768,13 @@ class LLMRepository {
                 "text" -> textContent = blockObj.get("text")?.asString
                 "thinking" -> thinkingContent = blockObj.get("thinking")?.asString
                 "tool_use" -> {
-                    toolCalls.add(ToolCall(
-                        id = blockObj.get("id")?.asString ?: "",
-                        name = blockObj.get("name")?.asString ?: "",
-                        arguments = blockObj.getAsJsonObject("input")?.toString() ?: "{}"
-                    ))
+                    toolCalls.add(
+                        ToolCall(
+                            id = blockObj.get("id")?.asString ?: "",
+                            name = blockObj.get("name")?.asString ?: "",
+                            arguments = blockObj.getAsJsonObject("input")?.toString() ?: "{}",
+                        ),
+                    )
                 }
             }
         }
@@ -607,7 +808,7 @@ class LLMRepository {
         config: LLMConfig,
         messages: List<ChatMessage>,
         stream: Boolean,
-        tools: List<ToolDefinition>? = null
+        tools: List<ToolDefinition>? = null,
     ): String {
         return when (config.apiType) {
             ApiType.OPENAI -> buildOpenAIBody(config, messages, stream, tools)
@@ -619,7 +820,7 @@ class LLMRepository {
         config: LLMConfig,
         messages: List<ChatMessage>,
         stream: Boolean,
-        tools: List<ToolDefinition>? = null
+        tools: List<ToolDefinition>? = null,
     ): String {
         val apiMessages = mutableListOf<Map<String, Any?>>()
         val supportsImageInput = supportsImageInput(config)
@@ -632,13 +833,15 @@ class LLMRepository {
             if (msg.imageBitmap != null && supportsImageInput) {
                 // Multimodal message with image
                 val content = mutableListOf<Map<String, Any>>()
-                content.add(mapOf(
-                    "type" to "image_url",
-                    "image_url" to mapOf(
-                        "url" to "data:image/jpeg;base64,${bitmapToBase64(msg.imageBitmap)}",
-                        "detail" to "high"
-                    )
-                ))
+                content.add(
+                    mapOf(
+                        "type" to "image_url",
+                        "image_url" to mapOf(
+                            "url" to "data:image/jpeg;base64,${bitmapToBase64(msg.imageBitmap)}",
+                            "detail" to "high",
+                        ),
+                    ),
+                )
                 if (msg.content.isNotBlank()) {
                     content.add(mapOf("type" to "text", "text" to msg.content))
                 }
@@ -651,8 +854,8 @@ class LLMRepository {
                         "type" to "function",
                         "function" to mapOf(
                             "name" to tc.name,
-                            "arguments" to tc.arguments
-                        )
+                            "arguments" to tc.arguments,
+                        ),
                     )
                 }
                 // Many OpenAI-compatible APIs (DeepSeek, Qwen, etc.) require
@@ -660,17 +863,19 @@ class LLMRepository {
                 // Sending an empty string causes API errors.
                 val assistantMsg = mutableMapOf<String, Any?>(
                     "role" to "assistant",
-                    "tool_calls" to toolCallsMap
+                    "tool_calls" to toolCallsMap,
                 )
                 assistantMsg["content"] = if (msg.content.isBlank()) null else msg.content
                 apiMessages.add(assistantMsg)
             } else if (msg.toolCallId != null) {
                 // Tool result message
-                apiMessages.add(mapOf(
-                    "role" to "tool",
-                    "tool_call_id" to msg.toolCallId,
-                    "content" to msg.content
-                ))
+                apiMessages.add(
+                    mapOf(
+                        "role" to "tool",
+                        "tool_call_id" to msg.toolCallId,
+                        "content" to msg.content,
+                    ),
+                )
             } else {
                 apiMessages.add(mapOf("role" to msg.role, "content" to msg.content))
             }
@@ -680,7 +885,7 @@ class LLMRepository {
             "model" to config.modelName,
             "messages" to apiMessages,
             "max_tokens" to config.maxTokens,
-            "stream" to stream
+            "stream" to stream,
         )
 
         // Only add temperature for non-thinking models (o1/o3 don't support it)
@@ -707,7 +912,7 @@ class LLMRepository {
         config: LLMConfig,
         messages: List<ChatMessage>,
         stream: Boolean,
-        tools: List<ToolDefinition>? = null
+        tools: List<ToolDefinition>? = null,
     ): String {
         val apiMessages = mutableListOf<Map<String, Any>>()
         val supportsImageInput = supportsImageInput(config)
@@ -722,14 +927,16 @@ class LLMRepository {
             if (msg.imageBitmap != null && supportsImageInput) {
                 // Multimodal message with image for Anthropic
                 val content = mutableListOf<Map<String, Any>>()
-                content.add(mapOf(
-                    "type" to "image",
-                    "source" to mapOf(
-                        "type" to "base64",
-                        "media_type" to "image/jpeg",
-                        "data" to bitmapToBase64(msg.imageBitmap)
-                    )
-                ))
+                content.add(
+                    mapOf(
+                        "type" to "image",
+                        "source" to mapOf(
+                            "type" to "base64",
+                            "media_type" to "image/jpeg",
+                            "data" to bitmapToBase64(msg.imageBitmap),
+                        ),
+                    ),
+                )
                 if (msg.content.isNotBlank()) {
                     content.add(mapOf("type" to "text", "text" to msg.content))
                 }
@@ -747,12 +954,14 @@ class LLMRepository {
                     } catch (e: Exception) {
                         com.google.gson.JsonObject()
                     }
-                    content.add(mapOf(
-                        "type" to "tool_use",
-                        "id" to tc.id,
-                        "name" to tc.name,
-                        "input" to inputObj
-                    ))
+                    content.add(
+                        mapOf(
+                            "type" to "tool_use",
+                            "id" to tc.id,
+                            "name" to tc.name,
+                            "input" to inputObj,
+                        ),
+                    )
                 }
                 apiMessages.add(mapOf("role" to "assistant", "content" to content))
                 i++
@@ -762,17 +971,21 @@ class LLMRepository {
                 var j = i
                 while (j < filteredMessages.size && filteredMessages[j].toolCallId != null) {
                     val toolMsg = filteredMessages[j]
-                    toolResultBlocks.add(mapOf(
-                        "type" to "tool_result",
-                        "tool_use_id" to (toolMsg.toolCallId ?: ""),
-                        "content" to toolMsg.content
-                    ))
+                    toolResultBlocks.add(
+                        mapOf(
+                            "type" to "tool_result",
+                            "tool_use_id" to (toolMsg.toolCallId ?: ""),
+                            "content" to toolMsg.content,
+                        ),
+                    )
                     j++
                 }
-                apiMessages.add(mapOf(
-                    "role" to "user",
-                    "content" to toolResultBlocks
-                ))
+                apiMessages.add(
+                    mapOf(
+                        "role" to "user",
+                        "content" to toolResultBlocks,
+                    ),
+                )
                 i = j
             } else {
                 apiMessages.add(mapOf("role" to msg.role, "content" to msg.content))
@@ -784,7 +997,7 @@ class LLMRepository {
             "model" to config.modelName,
             "messages" to apiMessages,
             "max_tokens" to config.maxTokens,
-            "stream" to stream
+            "stream" to stream,
         )
 
         // System prompt for Anthropic is a top-level field
@@ -801,7 +1014,7 @@ class LLMRepository {
         if (config.thinkingEnabled && config.thinkingDepth != ThinkingDepth.NONE) {
             body["thinking"] = mapOf(
                 "type" to "enabled",
-                "budget_tokens" to config.thinkingDepth.budgetTokens
+                "budget_tokens" to config.thinkingDepth.budgetTokens,
             )
         }
 
@@ -810,7 +1023,7 @@ class LLMRepository {
                 mapOf(
                     "name" to tool.name,
                     "description" to tool.description,
-                    "input_schema" to tool.parameters
+                    "input_schema" to tool.parameters,
                 )
             }
         }
@@ -820,6 +1033,10 @@ class LLMRepository {
 
     private fun supportsImageInput(config: LLMConfig): Boolean {
         return config.supportsVision || LLMConfig.modelSupportsVision(config.modelName)
+    }
+
+    private companion object {
+        const val RESPONSE_SAMPLE_LIMIT = 1200
     }
 
     private fun bitmapToBase64(bitmap: Bitmap): String {
@@ -836,7 +1053,7 @@ class LLMRepository {
                 bitmap,
                 (bitmap.width * scale).toInt(),
                 (bitmap.height * scale).toInt(),
-                true
+                true,
             )
         } else {
             bitmap

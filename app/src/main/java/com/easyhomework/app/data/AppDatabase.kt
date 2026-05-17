@@ -11,7 +11,7 @@ import com.easyhomework.app.model.QueryHistory
 @Database(
     entities = [QueryHistory::class],
     version = 1,
-    exportSchema = false
+    exportSchema = false,
 )
 @TypeConverters(ChatMessageListConverter::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -27,7 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "easyhomework_database"
+                    "easyhomework_database",
                 )
                     .fallbackToDestructiveMigration()
                     .build()

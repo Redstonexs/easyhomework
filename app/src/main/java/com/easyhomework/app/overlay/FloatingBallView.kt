@@ -15,7 +15,7 @@ import kotlin.math.min
 class FloatingBallView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
-    defStyleAttr: Int = 0
+    defStyleAttr: Int = 0,
 ) : View(context, attrs, defStyleAttr) {
 
     var isMiniMode: Boolean = false
@@ -26,7 +26,7 @@ class FloatingBallView @JvmOverloads constructor(
 
     private val gradientColors = intArrayOf(
         Color.parseColor("#7C4DFF"),
-        Color.parseColor("#448AFF")
+        Color.parseColor("#448AFF"),
     )
 
     private val glowColor = Color.parseColor("#806C63FF")
@@ -97,7 +97,7 @@ class FloatingBallView @JvmOverloads constructor(
             glowPaint.shader = RadialGradient(
                 cx, cy, radius + 8f,
                 glowColor, Color.TRANSPARENT,
-                Shader.TileMode.CLAMP
+                Shader.TileMode.CLAMP,
             )
             canvas.drawCircle(cx, cy, radius + 5f, glowPaint)
             canvas.restore()
@@ -107,7 +107,7 @@ class FloatingBallView @JvmOverloads constructor(
                 cx - radius, cy - radius,
                 cx + radius, cy + radius,
                 gradientColors, null,
-                Shader.TileMode.CLAMP
+                Shader.TileMode.CLAMP,
             )
             backgroundPaint.alpha = alpha
             canvas.drawCircle(cx, cy, radius, backgroundPaint)

@@ -7,11 +7,11 @@ import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.model.ModelInfo
 import com.easyhomework.app.network.LLMRepository
 import com.easyhomework.app.util.PreferencesManager
+import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.util.UUID
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -41,7 +41,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         if (_providerConfigs.value.isEmpty()) {
             val defaultConfig = LLMConfig(
                 id = UUID.randomUUID().toString(),
-                name = "默认配置"
+                name = "默认配置",
             )
             _providerConfigs.value = listOf(defaultConfig)
             _activeProviderId.value = defaultConfig.id
@@ -63,7 +63,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun addNewProvider() {
         val newConfig = LLMConfig(
             id = UUID.randomUUID().toString(),
-            name = "新配置 ${_providerConfigs.value.size + 1}"
+            name = "新配置 ${_providerConfigs.value.size + 1}",
         )
         val updatedList = _providerConfigs.value + newConfig
         _providerConfigs.value = updatedList
@@ -151,7 +151,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 },
                 onFailure = { error ->
                     _saveMessage.value = "获取模型失败: ${error.message}"
-                }
+                },
             )
             _isFetchingModels.value = false
         }
@@ -161,13 +161,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         modelName: String,
         supportsVision: Boolean = false,
         supportsFunctionCalling: Boolean = true,
-        supportsThinking: Boolean = false
+        supportsThinking: Boolean = false,
     ) {
         _config.value = _config.value.copy(
             modelName = modelName,
             supportsVision = supportsVision,
             supportsFunctionCalling = supportsFunctionCalling,
-            supportsThinking = supportsThinking
+            supportsThinking = supportsThinking,
         )
     }
 }

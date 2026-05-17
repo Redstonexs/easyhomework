@@ -6,9 +6,9 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
  * Manages text recognition using Google ML Kit.
@@ -46,14 +46,14 @@ class TextRecognitionManager {
             RecognitionResult(
                 text = "",
                 confidence = 0f,
-                error = e.message
+                error = e.message,
             )
         }
     }
 
     private suspend fun recognizeWithRecognizer(
         image: InputImage,
-        recognizer: TextRecognizer
+        recognizer: TextRecognizer,
     ): RecognitionResult = suspendCancellableCoroutine { continuation ->
         recognizer.process(image)
             .addOnSuccessListener { visionText ->
@@ -72,10 +72,10 @@ class TextRecognitionManager {
                         blocks = visionText.textBlocks.map { block ->
                             TextBlock(
                                 text = block.text,
-                                boundingBox = block.boundingBox
+                                boundingBox = block.boundingBox,
                             )
-                        }
-                    )
+                        },
+                    ),
                 )
             }
             .addOnFailureListener { e ->
@@ -104,11 +104,11 @@ class TextRecognitionManager {
         val text: String,
         val confidence: Float = 0f,
         val blocks: List<TextBlock> = emptyList(),
-        val error: String? = null
+        val error: String? = null,
     )
 
     data class TextBlock(
         val text: String,
-        val boundingBox: android.graphics.Rect?
+        val boundingBox: android.graphics.Rect?,
     )
 }

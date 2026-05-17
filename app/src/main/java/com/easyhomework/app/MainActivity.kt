@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -21,7 +22,6 @@ import com.easyhomework.app.service.FloatingBallService
 import com.easyhomework.app.ui.screens.HistoryScreen
 import com.easyhomework.app.ui.screens.SettingsScreen
 import com.easyhomework.app.ui.theme.EasyHomeworkTheme
-import androidx.compose.material3.MaterialTheme
 import com.easyhomework.app.util.PreferencesManager
 import com.easyhomework.app.viewmodel.HistoryViewModel
 import com.easyhomework.app.viewmodel.SettingsViewModel
@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var preferencesManager: PreferencesManager
 
     private val overlayPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
+        ActivityResultContracts.StartActivityForResult(),
     ) {
         if (Settings.canDrawOverlays(this)) {
             startFloatingBallService()
@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
+        ActivityResultContracts.RequestPermission(),
     ) { _ ->
         // Notification permission is optional, proceed anyway
     }
@@ -59,7 +59,7 @@ class MainActivity : ComponentActivity() {
             EasyHomeworkTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background,
                 ) {
                     // Use preferences as source of truth, updated by service lifecycle
                     var serviceEnabled by remember { mutableStateOf(preferencesManager.isFloatingBallEnabled) }
@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity() {
                         onResyncState = {
                             // Called when returning to settings screen to pick up external changes
                             serviceEnabled = preferencesManager.isFloatingBallEnabled
-                        }
+                        },
                     )
                 }
             }
@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
         } else {
             val intent = Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
+                Uri.parse("package:$packageName"),
             )
             overlayPermissionLauncher.launch(intent)
         }
@@ -119,7 +119,7 @@ class MainActivity : ComponentActivity() {
 fun AppNavigation(
     onToggleService: (Boolean) -> Unit,
     isServiceRunning: Boolean,
-    onResyncState: () -> Unit
+    onResyncState: () -> Unit,
 ) {
     val navController = rememberNavController()
 
@@ -133,7 +133,7 @@ fun AppNavigation(
                 onNavigateToHistory = {
                     navController.navigate("history")
                 },
-                onResyncState = onResyncState
+                onResyncState = onResyncState,
             )
         }
         composable("history") {
@@ -142,7 +142,7 @@ fun AppNavigation(
                 viewModel = viewModel,
                 onNavigateBack = {
                     navController.popBackStack()
-                }
+                },
             )
         }
     }

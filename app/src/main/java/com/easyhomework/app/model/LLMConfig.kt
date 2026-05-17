@@ -5,7 +5,8 @@ package com.easyhomework.app.model
  */
 enum class ApiType(val displayName: String) {
     OPENAI("OpenAI 兼容"),
-    ANTHROPIC("Anthropic Claude");
+    ANTHROPIC("Anthropic Claude"),
+    ;
 
     companion object {
         fun fromString(value: String): ApiType {
@@ -22,7 +23,8 @@ enum class ThinkingDepth(val displayName: String, val budgetTokens: Int, val ope
     LOW("轻度", 2048, "low"),
     MEDIUM("中度", 8192, "medium"),
     HIGH("深度", 24576, "high"),
-    XHIGH("极深", 50000, "high");
+    XHIGH("极深", 50000, "high"),
+    ;
 
     companion object {
         fun fromString(value: String): ThinkingDepth {
@@ -52,7 +54,7 @@ data class LLMConfig(
     val miniBall: Boolean = false,
     val supportsVision: Boolean = true,
     val supportsFunctionCalling: Boolean = true,
-    val supportsThinking: Boolean = false
+    val supportsThinking: Boolean = false,
 ) {
     fun getFullUrl(): String {
         val base = apiEndpoint.trimEnd('/')
@@ -79,7 +81,7 @@ data class LLMConfig(
             "internvl",
             "minicpm-v",
             "llava",
-            "vision"
+            "vision",
         )
 
         /**

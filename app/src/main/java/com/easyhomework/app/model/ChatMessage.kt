@@ -8,13 +8,13 @@ import com.easyhomework.app.tools.ToolCall
  * Supports multimodal content (text + images) and tool calls.
  */
 data class ChatMessage(
-    val role: String,       // "system", "user", "assistant", "tool"
+    val role: String, // "system", "user", "assistant", "tool"
     val content: String,
-    val imageBitmap: Bitmap? = null,  // Optional image for vision models
-    val toolCalls: List<ToolCall>? = null,  // Tool calls from assistant
-    val toolCallId: String? = null,  // Tool call ID for tool results
+    val imageBitmap: Bitmap? = null, // Optional image for vision models
+    val toolCalls: List<ToolCall>? = null, // Tool calls from assistant
+    val toolCallId: String? = null, // Tool call ID for tool results
     val timestamp: Long = System.currentTimeMillis(),
-    val isStreaming: Boolean = false  // true while the assistant response is still streaming
+    val isStreaming: Boolean = false, // true while the assistant response is still streaming
 ) {
     companion object {
         const val ROLE_SYSTEM = "system"

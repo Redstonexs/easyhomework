@@ -3,6 +3,7 @@ package com.easyhomework.app.network
 import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.tools.ToolCall
 import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 
 /**
@@ -20,7 +21,7 @@ class SSEStreamParser {
     private data class ToolCallBuffer(
         var id: String = "",
         var name: String = "",
-        val arguments: StringBuilder = StringBuilder()
+        val arguments: StringBuilder = StringBuilder(),
     )
 
     /**
@@ -76,6 +77,10 @@ class SSEStreamParser {
     private fun parseOpenAIData(data: String): List<ParseResult> {
         return try {
             val jsonObject = JsonParser.parseString(data).asJsonObject
+            val topLevelResults = parseOpenAITopLevelData(jsonObject)
+            if (topLevelResults.isNotEmpty()) {
+                return topLevelResults
+            }
 
             val choices = jsonObject.getAsJsonArray("choices")
             if (choices == null || choices.size() == 0) {
@@ -173,20 +178,68 @@ class SSEStreamParser {
         }
     }
 
+    private fun parseOpenAITopLevelData(jsonObject: JsonObject): List<ParseResult> {
+        val results = mutableListOf<ParseResult>()
+        val type = textValue(jsonObject.get("type")).orEmpty()
+
+        when {
+            type == "response.output_text.delta" || type == "response.text.delta" -> {
+                textValue(jsonObject.get("delta"))
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { results.add(ParseResult.Content(it)) }
+            }
+            type.contains("reasoning") && type.endsWith(".delta") -> {
+                textValue(jsonObject.get("delta"))
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { results.add(ParseResult.Thinking(it)) }
+            }
+            type == "response.completed" -> {
+                textValue(jsonObject.get("response"))
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { results.add(ParseResult.Content(it)) }
+                results.add(ParseResult.Done)
+            }
+            type == "response.failed" || type == "error" -> {
+                val message = textValue(jsonObject.get("error"))
+                    ?: textValue(jsonObject.get("message"))
+                    ?: "Unknown OpenAI-compatible error"
+                results.add(ParseResult.Error(message))
+            }
+        }
+
+        if (results.isEmpty() && !jsonObject.has("choices")) {
+            val fallbackText = textValue(jsonObject.get("answer"))
+                ?: textValue(jsonObject.get("content"))
+                ?: textValue(jsonObject.get("text"))
+                ?: textValue(jsonObject.get("response"))
+                ?: textValue(jsonObject.get("output_text"))
+                ?: textValue(jsonObject.get("delta"))
+            fallbackText?.takeIf { it.isNotEmpty() }?.let { results.add(ParseResult.Content(it)) }
+        }
+
+        return results
+    }
+
     private fun textValue(element: JsonElement?): String? {
         if (element == null || element.isJsonNull) return null
 
         return when {
             element.isJsonPrimitive -> element.asString
-            element.isJsonArray -> element.asJsonArray
-                .mapNotNull { item -> textValue(item) }
-                .joinToString("")
-                .ifEmpty { null }
+            element.isJsonArray ->
+                element.asJsonArray
+                    .mapNotNull { item -> textValue(item) }
+                    .joinToString("")
+                    .ifEmpty { null }
             element.isJsonObject -> {
                 val obj = element.asJsonObject
                 textValue(obj.get("text"))
                     ?: textValue(obj.get("content"))
                     ?: textValue(obj.get("output_text"))
+                    ?: textValue(obj.get("answer"))
+                    ?: textValue(obj.get("response"))
+                    ?: textValue(obj.get("message"))
+                    ?: textValue(obj.get("output"))
+                    ?: textValue(obj.get("delta"))
             }
             else -> null
         }
@@ -294,7 +347,9 @@ class SSEStreamParser {
                     if (choices != null && choices.size() > 0) {
                         val message = choices[0].asJsonObject.getAsJsonObject("message")
                         message?.get("content")?.asString
-                    } else null
+                    } else {
+                        null
+                    }
                 }
                 ApiType.ANTHROPIC -> {
                     val content = jsonObject.getAsJsonArray("content")
@@ -304,7 +359,9 @@ class SSEStreamParser {
                             .filter { it.get("type")?.asString == "text" }
                             .joinToString("") { it.get("text")?.asString ?: "" }
                             .ifEmpty { null }
-                    } else null
+                    } else {
+                        null
+                    }
                 }
             }
         } catch (e: Exception) {

@@ -3,21 +3,19 @@ package com.easyhomework.app.overlay
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.*
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.view.Gravity
-import android.view.ViewGroup
 import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.ocr.SmartRegionDetector
 import com.easyhomework.app.ocr.TextRecognitionManager
 import com.easyhomework.app.util.PreferencesManager
-import kotlinx.coroutines.*
 import kotlin.math.max
 import kotlin.math.min
+import kotlinx.coroutines.*
 
 /**
  * Full-screen overlay that displays a screenshot and allows the user to select/adjust
@@ -32,7 +30,7 @@ import kotlin.math.min
 @SuppressLint("ViewConstructor")
 class RegionSelectorOverlay(
     context: Context,
-    private val screenshot: Bitmap
+    private val screenshot: Bitmap,
 ) : FrameLayout(context) {
 
     /**
@@ -96,7 +94,15 @@ class RegionSelectorOverlay(
     private val touchSlop = 40f
 
     enum class Handle {
-        NONE, TOP_LEFT, TOP, TOP_RIGHT, RIGHT, BOTTOM_RIGHT, BOTTOM, BOTTOM_LEFT, LEFT
+        NONE,
+        TOP_LEFT,
+        TOP,
+        TOP_RIGHT,
+        RIGHT,
+        BOTTOM_RIGHT,
+        BOTTOM,
+        BOTTOM_LEFT,
+        LEFT,
     }
 
     init {
@@ -113,7 +119,7 @@ class RegionSelectorOverlay(
         }
         val statusParams = LayoutParams(
             LayoutParams.WRAP_CONTENT,
-            LayoutParams.WRAP_CONTENT
+            LayoutParams.WRAP_CONTENT,
         ).apply {
             gravity = Gravity.CENTER
         }
@@ -140,7 +146,9 @@ class RegionSelectorOverlay(
             createButton("直接识图", "#FF9800") {
                 confirmSelection(sendDirectImage = true)
             }
-        } else null
+        } else {
+            null
+        }
 
         // Confirm OCR button
         val confirmBtn = createButton("✓ OCR 识字", "#6C63FF") {
@@ -159,7 +167,7 @@ class RegionSelectorOverlay(
 
         val buttonParams = LayoutParams(
             LayoutParams.MATCH_PARENT,
-            LayoutParams.WRAP_CONTENT
+            LayoutParams.WRAP_CONTENT,
         ).apply {
             gravity = Gravity.BOTTOM
         }
@@ -187,7 +195,7 @@ class RegionSelectorOverlay(
                     screenshot.width * 0.1f,
                     screenshot.height * 0.15f,
                     screenshot.width * 0.9f,
-                    screenshot.height * 0.75f
+                    screenshot.height * 0.75f,
                 )
                 isLoading = false
                 statusText.text = "自动检测失败，请手动调整选区"
@@ -404,7 +412,7 @@ class RegionSelectorOverlay(
             rect.left * displayScale + offsetX,
             rect.top * displayScale + offsetY,
             rect.right * displayScale + offsetX,
-            rect.bottom * displayScale + offsetY
+            rect.bottom * displayScale + offsetY,
         )
     }
 
@@ -422,13 +430,15 @@ class RegionSelectorOverlay(
                         max(0, selectionRect.left.toInt()),
                         max(0, selectionRect.top.toInt()),
                         min(screenshot.width, selectionRect.right.toInt()),
-                        min(screenshot.height, selectionRect.bottom.toInt())
+                        min(screenshot.height, selectionRect.bottom.toInt()),
                     )
 
                     val croppedBitmap = Bitmap.createBitmap(
                         screenshot,
-                        cropRect.left, cropRect.top,
-                        cropRect.width(), cropRect.height()
+                        cropRect.left,
+                        cropRect.top,
+                        cropRect.width(),
+                        cropRect.height(),
                     )
 
                     android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -452,13 +462,15 @@ class RegionSelectorOverlay(
                         max(0, selectionRect.left.toInt()),
                         max(0, selectionRect.top.toInt()),
                         min(screenshot.width, selectionRect.right.toInt()),
-                        min(screenshot.height, selectionRect.bottom.toInt())
+                        min(screenshot.height, selectionRect.bottom.toInt()),
                     )
 
                     val croppedBitmap = Bitmap.createBitmap(
                         screenshot,
-                        cropRect.left, cropRect.top,
-                        cropRect.width(), cropRect.height()
+                        cropRect.left,
+                        cropRect.top,
+                        cropRect.width(),
+                        cropRect.height(),
                     )
 
                     val recognizer = TextRecognitionManager()

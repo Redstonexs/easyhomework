@@ -3,7 +3,6 @@ package com.easyhomework.app
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.os.Build
 
 class EasyHomeworkApp : Application() {
 
@@ -23,7 +22,7 @@ class EasyHomeworkApp : Application() {
         val floatingChannel = NotificationChannel(
             CHANNEL_FLOATING_BALL,
             "悬浮球服务",
-            NotificationManager.IMPORTANCE_LOW
+            NotificationManager.IMPORTANCE_LOW,
         ).apply {
             description = "悬浮球后台运行通知"
             setShowBadge(false)
@@ -32,7 +31,7 @@ class EasyHomeworkApp : Application() {
         val captureChannel = NotificationChannel(
             CHANNEL_SCREEN_CAPTURE,
             "截屏服务",
-            NotificationManager.IMPORTANCE_LOW
+            NotificationManager.IMPORTANCE_LOW,
         ).apply {
             description = "截屏功能运行通知"
             setShowBadge(false)

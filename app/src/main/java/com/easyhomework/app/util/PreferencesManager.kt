@@ -25,7 +25,7 @@ class PreferencesManager(context: Context) {
         "easyhomework_secure_prefs",
         masterKey,
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
     )
 
     private val prefs: SharedPreferences =
@@ -54,7 +54,7 @@ class PreferencesManager(context: Context) {
                 "supportsVision" to config.supportsVision.toString(),
                 "supportsFunctionCalling" to config.supportsFunctionCalling.toString(),
                 "supportsThinking" to config.supportsThinking.toString(),
-                "miniBall" to config.miniBall.toString()
+                "miniBall" to config.miniBall.toString(),
             )
         }
         prefs.edit().putString(KEY_PROVIDER_CONFIGS, gson.toJson(configDataList)).apply()
@@ -97,7 +97,7 @@ class PreferencesManager(context: Context) {
                     supportsVision = data["supportsVision"]?.toBooleanStrictOrNull() ?: true,
                     supportsFunctionCalling = data["supportsFunctionCalling"]?.toBooleanStrictOrNull() ?: true,
                     supportsThinking = data["supportsThinking"]?.toBooleanStrictOrNull() ?: false,
-                    miniBall = data["miniBall"]?.toBooleanStrictOrNull() ?: false
+                    miniBall = data["miniBall"]?.toBooleanStrictOrNull() ?: false,
                 )
             }
         } catch (e: Exception) {
@@ -169,7 +169,7 @@ class PreferencesManager(context: Context) {
             stream = prefs.getBoolean(KEY_STREAM, defaults.stream),
             thinkingEnabled = prefs.getBoolean(KEY_THINKING_ENABLED, defaults.thinkingEnabled),
             thinkingDepth = ThinkingDepth.fromString(prefs.getString(KEY_THINKING_DEPTH, defaults.thinkingDepth.name) ?: defaults.thinkingDepth.name),
-            miniBall = prefs.getBoolean(KEY_MINI_BALL, defaults.miniBall)
+            miniBall = prefs.getBoolean(KEY_MINI_BALL, defaults.miniBall),
         )
     }
 

@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -46,7 +45,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.QueryHistory
 import com.easyhomework.app.ui.components.ConfirmDialog
@@ -244,25 +242,28 @@ fun HistoryItem(
                                 .padding(vertical = 4.dp),
                         ) {
                             Icon(
-                                imageVector = if (message.role == ChatMessage.ROLE_USER)
+                                imageVector = if (message.role == ChatMessage.ROLE_USER) {
                                     Icons.AutoMirrored.Filled.Help
-                                else
-                                    Icons.Filled.SmartToy,
+                                } else {
+                                    Icons.Filled.SmartToy
+                                },
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp),
-                                tint = if (message.role == ChatMessage.ROLE_USER)
+                                tint = if (message.role == ChatMessage.ROLE_USER) {
                                     MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = message.content,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = if (message.role == ChatMessage.ROLE_USER)
+                                color = if (message.role == ChatMessage.ROLE_USER) {
                                     MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                                 maxLines = if (message.role == ChatMessage.ROLE_USER) 3 else 10,
                                 overflow = TextOverflow.Ellipsis,
                             )

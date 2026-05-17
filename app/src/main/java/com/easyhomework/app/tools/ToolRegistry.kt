@@ -6,7 +6,7 @@ package com.easyhomework.app.tools
 data class ToolDefinition(
     val name: String,
     val description: String,
-    val parameters: Map<String, Any>
+    val parameters: Map<String, Any>,
 ) {
     fun toJson(): Map<String, Any> {
         return mapOf(
@@ -14,8 +14,8 @@ data class ToolDefinition(
             "function" to mapOf(
                 "name" to name,
                 "description" to description,
-                "parameters" to parameters
-            )
+                "parameters" to parameters,
+            ),
         )
     }
 }
@@ -26,7 +26,7 @@ data class ToolDefinition(
 data class ToolCall(
     val id: String,
     val name: String,
-    val arguments: String
+    val arguments: String,
 )
 
 /**
@@ -35,7 +35,7 @@ data class ToolCall(
 data class ToolResult(
     val toolCallId: String,
     val content: String,
-    val isError: Boolean = false
+    val isError: Boolean = false,
 )
 
 /**
@@ -45,7 +45,7 @@ object ToolRegistry {
     val tools = listOf(
         createGetCurrentDateTimeTool(),
         createCalculateTool(),
-        createConvertUnitTool()
+        createConvertUnitTool(),
     )
 
     fun getToolDefinitions(): List<ToolDefinition> = tools
@@ -61,11 +61,11 @@ object ToolRegistry {
                 "properties" to mapOf(
                     "timezone" to mapOf(
                         "type" to "string",
-                        "description" to "时区名称，如 'Asia/Shanghai'、'America/New_York'。默认使用本地时区。"
-                    )
+                        "description" to "时区名称，如 'Asia/Shanghai'、'America/New_York'。默认使用本地时区。",
+                    ),
                 ),
-                "required" to emptyList<String>()
-            )
+                "required" to emptyList<String>(),
+            ),
         )
     }
 
@@ -78,11 +78,11 @@ object ToolRegistry {
                 "properties" to mapOf(
                     "expression" to mapOf(
                         "type" to "string",
-                        "description" to "数学表达式，如 '2+3*4'、'sin(PI/6)'、'log(100)'、'sqrt(144)'、'15!'、'2^10'"
-                    )
+                        "description" to "数学表达式，如 '2+3*4'、'sin(PI/6)'、'log(100)'、'sqrt(144)'、'15!'、'2^10'",
+                    ),
                 ),
-                "required" to listOf("expression")
-            )
+                "required" to listOf("expression"),
+            ),
         )
     }
 
@@ -95,19 +95,19 @@ object ToolRegistry {
                 "properties" to mapOf(
                     "value" to mapOf(
                         "type" to "number",
-                        "description" to "要转换的数值"
+                        "description" to "要转换的数值",
                     ),
                     "from_unit" to mapOf(
                         "type" to "string",
-                        "description" to "源单位，如 'km'、'kg'、'celsius'、'm2'"
+                        "description" to "源单位，如 'km'、'kg'、'celsius'、'm2'",
                     ),
                     "to_unit" to mapOf(
                         "type" to "string",
-                        "description" to "目标单位，如 'miles'、'pounds'、'fahrenheit'、'ft2'"
-                    )
+                        "description" to "目标单位，如 'miles'、'pounds'、'fahrenheit'、'ft2'",
+                    ),
                 ),
-                "required" to listOf("value", "from_unit", "to_unit")
-            )
+                "required" to listOf("value", "from_unit", "to_unit"),
+            ),
         )
     }
 }

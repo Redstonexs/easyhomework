@@ -1,7 +1,6 @@
 package com.easyhomework.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -27,8 +26,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -48,7 +47,6 @@ import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -61,10 +59,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
@@ -205,15 +201,16 @@ fun SettingsScreen(
                             .size(44.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(
-                                if (serviceEnabled)
+                                if (serviceEnabled) {
                                     Brush.linearGradient(listOf(PrimaryPurple, PrimaryBlue))
-                                else
+                                } else {
                                     Brush.linearGradient(
                                         listOf(
                                             MaterialTheme.colorScheme.surfaceVariant,
                                             MaterialTheme.colorScheme.surfaceVariant,
                                         ),
-                                    ),
+                                    )
+                                },
                             ),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -504,10 +501,11 @@ fun SettingsScreen(
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Text(
                                                         model.id,
-                                                        color = if (model.id == config.modelName)
+                                                        color = if (model.id == config.modelName) {
                                                             MaterialTheme.colorScheme.primary
-                                                        else
-                                                            MaterialTheme.colorScheme.onSurface,
+                                                        } else {
+                                                            MaterialTheme.colorScheme.onSurface
+                                                        },
                                                         fontSize = 14.sp,
                                                     )
                                                     Spacer(modifier = Modifier.width(6.dp))
@@ -553,10 +551,11 @@ fun SettingsScreen(
                                         text = {
                                             Text(
                                                 model.id,
-                                                color = if (model.id == config.modelName)
+                                                color = if (model.id == config.modelName) {
                                                     MaterialTheme.colorScheme.primary
-                                                else
-                                                    MaterialTheme.colorScheme.onSurface,
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurface
+                                                },
                                                 fontSize = 14.sp,
                                             )
                                         },
