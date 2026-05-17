@@ -3,32 +3,44 @@ package com.easyhomework.app.tools
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 
 class ToolExecutor {
 
     suspend fun execute(toolCall: ToolCall): ToolResult {
-        return try {
-            when (toolCall.name) {
-                "get_current_datetime", "get_current_datatime" -> executeGetCurrentDateTime(toolCall)
-                "calculate" -> executeCalculate(toolCall)
-                "evaluate_js" -> executeEvaluateJs(toolCall)
-                "convert_unit" -> executeConvertUnit(toolCall)
-                else -> ToolResult(
+        return withContext(Dispatchers.Default) {
+            coroutineContext.ensureActive()
+            try {
+                when (normalizeToolName(toolCall.name)) {
+                    "get_current_datetime" -> executeGetCurrentDateTime(toolCall)
+                    "calculate", "evaluate_js", "evaluate_expression" -> executeCalculate(toolCall)
+                    "convert_unit" -> executeConvertUnit(toolCall)
+                    else -> ToolResult(
+                        toolCallId = toolCall.id,
+                        content = "Unknown tool: ${toolCall.name}",
+                        isError = true
+                    )
+                }
+            } catch (e: Exception) {
+                ToolResult(
                     toolCallId = toolCall.id,
-                    content = "Unknown tool: ${toolCall.name}",
+                    content = "Error: ${e.message}",
                     isError = true
                 )
             }
-        } catch (e: Exception) {
-            ToolResult(
-                toolCallId = toolCall.id,
-                content = "Error: ${e.message}",
-                isError = true
-            )
+        }
+    }
+
+    private fun normalizeToolName(name: String): String {
+        return when (name.trim()) {
+            "get_current_datatime", "get_datetime" -> "get_current_datetime"
+            else -> name.trim()
         }
     }
 
@@ -60,6 +72,8 @@ class ToolExecutor {
     private fun executeCalculate(toolCall: ToolCall): ToolResult {
         val args = parseArgs(toolCall.arguments)
         val expression = args.optString("expression", "")
+            .ifBlank { args.optString("code", "") }
+            .stripResultAssignment()
 
         if (expression.isBlank()) {
             return ToolResult(toolCallId = toolCall.id, content = "需要提供表达式", isError = true)
@@ -73,120 +87,20 @@ class ToolExecutor {
         }
     }
 
+    private fun String.stripResultAssignment(): String {
+        val trimmed = trim().removeSuffix(";").trim()
+        val resultAssignment = Regex("""^(?:const|let|var)?\s*result\s*=\s*(.+)$""")
+        return resultAssignment.matchEntire(trimmed)?.groupValues?.get(1)?.trim() ?: trimmed
+    }
+
     private fun evaluateExpression(expr: String): Double {
-        var s = expr.replace(" ", "").lowercase()
-            .replace("pi", PI.toString())
-            .replace("π", PI.toString())
-
-        // Factorial: N!
-        val factRegex = Regex("""(\d+)!""")
-        s = factRegex.replace(s) { factorial(it.groupValues[1].toInt()).toDouble().toString() }
-
-        // Power: a^b or a**b
-        val powRegex = Regex("""(-?\d+\.?\d*)\^(-?\d+\.?\d*)""")
-        s = powRegex.replace(s) { it.groupValues[1].toDouble().pow(it.groupValues[2].toDouble()).toString() }
-        val powRegex2 = Regex("""(-?\d+\.?\d*)\*\*(-?\d+\.?\d*)""")
-        s = powRegex2.replace(s) { it.groupValues[1].toDouble().pow(it.groupValues[2].toDouble()).toString() }
-
-        // Math functions
-        val funcMap = mapOf(
-            "sqrt" to { x: Double -> sqrt(x) },
-            "abs" to { x: Double -> abs(x) },
-            "sin" to { x: Double -> sin(x) },
-            "cos" to { x: Double -> cos(x) },
-            "tan" to { x: Double -> tan(x) },
-            "asin" to { x: Double -> asin(x) },
-            "acos" to { x: Double -> acos(x) },
-            "atan" to { x: Double -> atan(x) },
-            "log" to { x: Double -> log10(x) },
-            "ln" to { x: Double -> ln(x) },
-            "ceil" to { x: Double -> ceil(x) },
-            "floor" to { x: Double -> floor(x) },
-            "round" to { x: Double -> round(x) }
-        )
-        for ((name, func) in funcMap) {
-            val regex = Regex("""$name\(([^)]+)\)""")
-            while (regex.containsMatchIn(s)) {
-                s = regex.replace(s) { match ->
-                    val inner = evaluateExpression(match.groupValues[1]).toString()
-                    func(inner.toDouble()).toString()
-                }
-            }
-        }
-
-        return parseAddSub(s, 0).first
-    }
-
-    // Recursive descent parser: + -
-    private fun parseAddSub(s: String, pos: Int): Pair<Double, Int> {
-        var (left, i) = parseMulDiv(s, pos)
-        while (i < s.length && (s[i] == '+' || s[i] == '-')) {
-            val op = s[i]
-            val (right, j) = parseMulDiv(s, i + 1)
-            left = if (op == '+') left + right else left - right
-            i = j
-        }
-        return left to i
-    }
-
-    // * /
-    private fun parseMulDiv(s: String, pos: Int): Pair<Double, Int> {
-        var (left, i) = parseUnary(s, pos)
-        while (i < s.length && (s[i] == '*' || s[i] == '/')) {
-            val op = s[i]
-            val (right, j) = parseUnary(s, i + 1)
-            left = if (op == '*') left * right else left / right
-            i = j
-        }
-        return left to i
-    }
-
-    // Unary +/-
-    private fun parseUnary(s: String, pos: Int): Pair<Double, Int> {
-        if (pos < s.length && s[pos] == '-') {
-            val (v, i) = parsePrimary(s, pos + 1)
-            return -v to i
-        }
-        if (pos < s.length && s[pos] == '+') {
-            return parsePrimary(s, pos + 1)
-        }
-        return parsePrimary(s, pos)
-    }
-
-    // Number or parenthesized expression
-    private fun parsePrimary(s: String, pos: Int): Pair<Double, Int> {
-        if (pos < s.length && s[pos] == '(') {
-            val (v, i) = parseAddSub(s, pos + 1)
-            val end = if (i < s.length && s[i] == ')') i + 1 else i
-            return v to end
-        }
-        var i = pos
-        if (i < s.length && s[i] == '-') i++
-        while (i < s.length && (s[i].isDigit() || s[i] == '.')) i++
-        if (i == pos) throw IllegalArgumentException("Unexpected character at position $pos")
-        return s.substring(pos, i).toDouble() to i
+        return ExpressionParser(expr).parse()
     }
 
     private fun factorial(n: Int): Long {
         if (n < 0) throw IllegalArgumentException("负数没有阶乘")
         if (n > 20) throw IllegalArgumentException("阶乘结果过大 (n>20)")
         return if (n <= 1) 1 else n * factorial(n - 1)
-    }
-
-    private fun executeEvaluateJs(toolCall: ToolCall): ToolResult {
-        val args = parseArgs(toolCall.arguments)
-        val code = args.optString("code", "")
-
-        if (code.isBlank()) {
-            return ToolResult(toolCallId = toolCall.id, content = "需要提供代码", isError = true)
-        }
-
-        return try {
-            val result = evaluateExpression(code)
-            ToolResult(toolCallId = toolCall.id, content = "计算结果: $result")
-        } catch (e: Exception) {
-            ToolResult(toolCallId = toolCall.id, content = "执行失败: ${e.message}", isError = true)
-        }
     }
 
     private fun executeConvertUnit(toolCall: ToolCall): ToolResult {
@@ -286,10 +200,157 @@ class ToolExecutor {
     }
 
     private fun parseArgs(json: String): JSONObject {
+        val normalized = normalizeJsonObject(json)
         return try {
-            JSONObject(json)
+            JSONObject(normalized)
         } catch (e: Exception) {
             JSONObject()
         }
+    }
+
+    private fun normalizeJsonObject(json: String): String {
+        val trimmed = json.trim()
+        if (trimmed.isBlank()) return "{}"
+        val start = trimmed.indexOf('{')
+        val end = trimmed.lastIndexOf('}')
+        return if (start >= 0 && end >= start) trimmed.substring(start, end + 1) else trimmed
+    }
+
+    private inner class ExpressionParser(expression: String) {
+        private val input = expression
+            .replace("，", ",")
+            .replace("×", "*")
+            .replace("÷", "/")
+            .replace("π", "pi")
+            .filterNot { it.isWhitespace() }
+            .lowercase()
+        private var pos = 0
+
+        fun parse(): Double {
+            val value = parseAddSub()
+            if (pos != input.length) {
+                throw IllegalArgumentException("Unexpected character '${input[pos]}' at position $pos")
+            }
+            return value
+        }
+
+        private fun parseAddSub(): Double {
+            var value = parseMulDiv()
+            while (match('+') || match('-')) {
+                val op = input[pos - 1]
+                val right = parseMulDiv()
+                value = if (op == '+') value + right else value - right
+            }
+            return value
+        }
+
+        private fun parseMulDiv(): Double {
+            var value = parsePower()
+            while (true) {
+                val op = when {
+                    match('*') -> '*'
+                    match('/') -> '/'
+                    else -> return value
+                }
+                val right = parsePower()
+                value = if (op == '*') value * right else value / right
+            }
+        }
+
+        private fun parsePower(): Double {
+            val value = parseUnary()
+            return if (match("**") || match('^')) value.pow(parsePower()) else value
+        }
+
+        private fun parseUnary(): Double {
+            return when {
+                match('+') -> parseUnary()
+                match('-') -> -parseUnary()
+                else -> parsePostfix()
+            }
+        }
+
+        private fun parsePostfix(): Double {
+            var value = parsePrimary()
+            while (match('!')) {
+                value = factorial(value.toInt()).toDouble()
+            }
+            return value
+        }
+
+        private fun parsePrimary(): Double {
+            if (match('(')) {
+                val value = parseAddSub()
+                require(match(')')) { "Missing ')' at position $pos" }
+                return value
+            }
+
+            if (peek()?.isLetter() == true) {
+                val name = readIdentifier()
+                if (name == "pi") return PI
+                if (name == "e") return E
+                require(match('(')) { "Function '$name' requires parentheses" }
+                val first = parseAddSub()
+                val second = if (match(',')) parseAddSub() else null
+                require(match(')')) { "Missing ')' after function '$name'" }
+                return applyFunction(name, first, second)
+            }
+
+            return readNumber()
+        }
+
+        private fun applyFunction(name: String, first: Double, second: Double?): Double {
+            return when (name) {
+                "sqrt" -> sqrt(first)
+                "abs" -> abs(first)
+                "sin" -> sin(first)
+                "cos" -> cos(first)
+                "tan" -> tan(first)
+                "asin" -> asin(first)
+                "acos" -> acos(first)
+                "atan" -> atan(first)
+                "log" -> log10(first)
+                "ln" -> ln(first)
+                "ceil" -> ceil(first)
+                "floor" -> floor(first)
+                "round" -> round(first)
+                "pow" -> first.pow(second ?: throw IllegalArgumentException("pow requires 2 arguments"))
+                "max" -> max(first, second ?: throw IllegalArgumentException("max requires 2 arguments"))
+                "min" -> min(first, second ?: throw IllegalArgumentException("min requires 2 arguments"))
+                else -> throw IllegalArgumentException("Unsupported function '$name'")
+            }
+        }
+
+        private fun readIdentifier(): String {
+            val start = pos
+            while (peek()?.isLetter() == true || peek() == '_') pos++
+            return input.substring(start, pos)
+        }
+
+        private fun readNumber(): Double {
+            val start = pos
+            while (peek()?.isDigit() == true || peek() == '.') pos++
+            if (peek() == 'e') {
+                pos++
+                if (peek() == '+' || peek() == '-') pos++
+                while (peek()?.isDigit() == true) pos++
+            }
+            if (start == pos) throw IllegalArgumentException("Expected number at position $pos")
+            return input.substring(start, pos).toDouble()
+        }
+
+        private fun match(char: Char): Boolean {
+            if (peek() != char) return false
+            pos++
+            return true
+        }
+
+        private fun match(text: String): Boolean {
+            if (!input.startsWith(text, pos)) return false
+            pos += text.length
+            return true
+        }
+
+        private fun peek(): Char? = input.getOrNull(pos)
     }
 }

@@ -70,7 +70,7 @@ class LLMRepository {
 
         try {
             call = client.newCall(request)
-            val response = call!!.execute()
+            val response = call.execute()
 
             response.use { resp ->
                 if (!resp.isSuccessful) {
@@ -88,30 +88,24 @@ class LLMRepository {
 
                 reader.use { r ->
                     var line: String?
-                    while (r.readLine().also { line = it } != null) {
-                        when (val result = sseParser.parseLine(line!!, config.apiType)) {
-                            is SSEStreamParser.ParseResult.Content -> {
-                                emit(StreamEvent.Token(result.text))
-                            }
-                            is SSEStreamParser.ParseResult.Thinking -> {
-                                emit(StreamEvent.Thinking(result.text))
-                            }
-                            is SSEStreamParser.ParseResult.ToolCall -> {
-                                emit(StreamEvent.ToolCall(result.toolCall))
-                            }
-                            is SSEStreamParser.ParseResult.ToolCalls -> {
-                                for (tc in result.toolCalls) {
-                                    emit(StreamEvent.ToolCall(tc))
+                    readLoop@ while (r.readLine().also { line = it } != null) {
+                        for (result in sseParser.parseLine(line.orEmpty(), config.apiType)) {
+                            when (result) {
+                                is SSEStreamParser.ParseResult.Content -> {
+                                    emit(StreamEvent.Token(result.text))
                                 }
-                            }
-                            is SSEStreamParser.ParseResult.Done -> {
-                                break
-                            }
-                            is SSEStreamParser.ParseResult.Error -> {
-                                emit(StreamEvent.Error(result.message))
-                            }
-                            is SSEStreamParser.ParseResult.Skip -> {
-                                // Silently skip
+                                is SSEStreamParser.ParseResult.Thinking -> {
+                                    emit(StreamEvent.Thinking(result.text))
+                                }
+                                is SSEStreamParser.ParseResult.ToolCall -> {
+                                    emit(StreamEvent.ToolCall(result.toolCall))
+                                }
+                                is SSEStreamParser.ParseResult.Done -> {
+                                    break@readLoop
+                                }
+                                is SSEStreamParser.ParseResult.Error -> {
+                                    emit(StreamEvent.Error(result.message))
+                                }
                             }
                         }
                     }
@@ -379,17 +373,17 @@ class LLMRepository {
         if (choices.size() == 0) return null
 
         val message = choices[0].asJsonObject.getAsJsonObject("message") ?: return null
-        val content = message.get("content")?.asString
+        val content = message.get("content")?.takeIf { !it.isJsonNull }?.asString
 
         // Parse tool calls
         val toolCallsArray = message.getAsJsonArray("tool_calls")
-        val toolCalls = toolCallsArray?.map { tc ->
+        val toolCalls = toolCallsArray?.mapIndexedNotNull { index, tc ->
             val function = tc.asJsonObject.getAsJsonObject("function")
-            ToolCall(
-                id = tc.asJsonObject.get("id")?.asString ?: "",
-                name = function?.get("name")?.asString ?: "",
-                arguments = function?.get("arguments")?.asString ?: "{}"
-            )
+            val name = function?.get("name")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+            if (name.isBlank()) return@mapIndexedNotNull null
+            val id = tc.asJsonObject.get("id")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+            val arguments = function?.get("arguments")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+            ToolCall(id = id.ifBlank { "tool_call_$index" }, name = name, arguments = arguments.ifBlank { "{}" })
         }
 
         return ChatResponse(content = content, toolCalls = toolCalls)
@@ -502,9 +496,7 @@ class LLMRepository {
                     "role" to "assistant",
                     "tool_calls" to toolCallsMap
                 )
-                if (msg.content.isNotBlank()) {
-                    assistantMsg["content"] = msg.content
-                }
+                assistantMsg["content"] = if (msg.content.isBlank()) null else msg.content
                 apiMessages.add(assistantMsg)
             } else if (msg.toolCallId != null) {
                 // Tool result message
@@ -535,8 +527,9 @@ class LLMRepository {
             body["reasoning_effort"] = config.thinkingDepth.openaiReasoningEffort
         }
 
-        // Add tools if provided
-        if (!tools.isNullOrEmpty()) {
+        // Add tools only when the active config allows them. Some domestic
+        // gateways accept the field but never return valid tool-call deltas.
+        if (config.supportsFunctionCalling && !tools.isNullOrEmpty()) {
             body["tools"] = tools.map { it.toJson() }
             body["tool_choice"] = "auto"
         }
@@ -645,8 +638,7 @@ class LLMRepository {
             )
         }
 
-        // Add tools if provided
-        if (!tools.isNullOrEmpty()) {
+        if (config.supportsFunctionCalling && !tools.isNullOrEmpty()) {
             body["tools"] = tools.map { tool ->
                 mapOf(
                     "name" to tool.name,

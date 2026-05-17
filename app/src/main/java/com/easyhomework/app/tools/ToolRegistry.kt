@@ -1,9 +1,5 @@
 package com.easyhomework.app.tools
 
-import com.google.gson.Gson
-import com.google.gson.JsonObject
-import com.google.gson.JsonParser
-
 /**
  * Tool definition for LLM function calling.
  */
@@ -46,12 +42,9 @@ data class ToolResult(
  * Registry of available tools.
  */
 object ToolRegistry {
-    private val gson = Gson()
-
     val tools = listOf(
         createGetCurrentDateTimeTool(),
         createCalculateTool(),
-        createEvaluateExpressionTool(),
         createConvertUnitTool()
     )
 
@@ -89,23 +82,6 @@ object ToolRegistry {
                     )
                 ),
                 "required" to listOf("expression")
-            )
-        )
-    }
-
-    private fun createEvaluateExpressionTool(): ToolDefinition {
-        return ToolDefinition(
-            name = "evaluate_js",
-            description = "执行 JavaScript 代码进行复杂计算或逻辑处理。适用于需要多步计算、数组操作、字符串处理等复杂场景。",
-            parameters = mapOf(
-                "type" to "object",
-                "properties" to mapOf(
-                    "code" to mapOf(
-                        "type" to "string",
-                        "description" to "要执行的 JavaScript 代码。代码应该将最终结果赋值给 `result` 变量。"
-                    )
-                ),
-                "required" to listOf("code")
             )
         )
     }

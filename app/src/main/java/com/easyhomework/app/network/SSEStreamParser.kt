@@ -11,20 +11,25 @@ import com.google.gson.JsonParser
  */
 class SSEStreamParser {
 
-    // Buffer for accumulating tool call arguments across chunks
+    // Buffers for accumulating streamed tool calls. OpenAI-compatible APIs key by
+    // tool index; Anthropic keys by content block index. Never rely on a single
+    // active tool because several domestic providers stream multiple calls at once.
     private val toolCallBuffers = mutableMapOf<Int, ToolCallBuffer>()
 
     private data class ToolCallBuffer(
-        val id: String,
-        val name: String,
+        var id: String = "",
+        var name: String = "",
         val arguments: StringBuilder = StringBuilder()
     )
 
     /**
-     * Parse a single SSE line for OpenAI-compatible APIs.
+     * Parse a single SSE line.
+     *
+     * A chunk can legally contain thinking, answer text, and tool-call deltas at
+     * the same time. Return all events so later fields do not get dropped.
      * Silently skips any non-parseable lines instead of emitting errors.
      */
-    fun parseLine(line: String, apiType: ApiType = ApiType.OPENAI): ParseResult {
+    fun parseLine(line: String, apiType: ApiType = ApiType.OPENAI): List<ParseResult> {
         val trimmed = line.trim()
 
         // Skip empty lines, SSE comments (":"), and non-data fields ("event:", "id:", "retry:")
@@ -32,12 +37,12 @@ class SSEStreamParser {
             trimmed.startsWith("event:") || trimmed.startsWith("id:") ||
             trimmed.startsWith("retry:")
         ) {
-            return ParseResult.Skip
+            return emptyList()
         }
 
         // Must start with "data:" (with or without space after colon)
         if (!trimmed.startsWith("data:")) {
-            return ParseResult.Skip
+            return emptyList()
         }
 
         // Extract data payload - handle both "data: {...}" and "data:{...}"
@@ -45,17 +50,17 @@ class SSEStreamParser {
 
         // Check for stream end signal
         if (data == "[DONE]") {
-            return ParseResult.Done
+            return flushToolCalls() + ParseResult.Done
         }
 
         // Empty data field
         if (data.isEmpty()) {
-            return ParseResult.Skip
+            return emptyList()
         }
 
         // Must be valid JSON (starts with '{')
         if (!data.startsWith("{")) {
-            return ParseResult.Skip
+            return emptyList()
         }
 
         return when (apiType) {
@@ -67,190 +72,184 @@ class SSEStreamParser {
     /**
      * Parse OpenAI-format streaming data chunk.
      */
-    private fun parseOpenAIData(data: String): ParseResult {
+    private fun parseOpenAIData(data: String): List<ParseResult> {
         return try {
             val jsonObject = JsonParser.parseString(data).asJsonObject
 
             val choices = jsonObject.getAsJsonArray("choices")
             if (choices == null || choices.size() == 0) {
-                return ParseResult.Skip
+                return emptyList()
             }
 
             val choice = choices[0].asJsonObject
-            val delta = choice.getAsJsonObject("delta") ?: return ParseResult.Skip
-
-            // Collect results — reasoning and content can coexist in the same delta
+            val delta = choice.getAsJsonObject("delta")
             val results = mutableListOf<ParseResult>()
 
-            // Check for reasoning/thinking content (for models like o1, deepseek-r1)
-            if (delta.has("reasoning_content")) {
-                val reasoning = delta.get("reasoning_content")
-                // Skip null AND empty strings — empty strings in the final chunk
-                // would cause early return before finish_reason is checked
-                if (!reasoning.isJsonNull && reasoning.asString.isNotEmpty()) {
-                    results.add(ParseResult.Thinking(reasoning.asString))
+            if (delta != null) {
+                // Check for reasoning/thinking content (for models like o1, deepseek-r1)
+                if (delta.has("reasoning_content")) {
+                    val reasoning = delta.get("reasoning_content")
+                    if (!reasoning.isJsonNull && reasoning.asString.isNotEmpty()) {
+                        results.add(ParseResult.Thinking(reasoning.asString))
+                    }
                 }
-            }
 
-            // Check for regular content (may coexist with reasoning_content)
-            if (delta.has("content")) {
-                val content = delta.get("content")
-                // Skip null AND empty strings — many OpenAI-compatible APIs
-                // (DeepSeek, Qwen, etc.) send a final chunk with content: ""
-                // alongside finish_reason. If we return Content("") here, we
-                // never reach the finish_reason check and tool call buffers
-                // are never flushed, causing tool calls to be silently dropped.
-                if (!content.isJsonNull && content.asString.isNotEmpty()) {
-                    results.add(ParseResult.Content(content.asString))
+                // Some domestic OpenAI-compatible APIs use "reasoning" instead.
+                if (delta.has("reasoning")) {
+                    val reasoning = delta.get("reasoning")
+                    if (!reasoning.isJsonNull && reasoning.asString.isNotEmpty()) {
+                        results.add(ParseResult.Thinking(reasoning.asString))
+                    }
                 }
-            }
 
-            // If we got thinking+content or content alone, return content first (answer takes priority)
-            if (results.isNotEmpty()) {
-                // Prefer Content over Thinking when both present
-                return results.firstOrNull { it is ParseResult.Content } ?: results.first()
-            }
+                // Check for regular content (may coexist with reasoning/tool calls)
+                if (delta.has("content")) {
+                    val content = delta.get("content")
+                    if (!content.isJsonNull && content.asString.isNotEmpty()) {
+                        results.add(ParseResult.Content(content.asString))
+                    }
+                }
 
-            // Check for tool calls
-            if (delta.has("tool_calls")) {
-                val toolCalls = delta.getAsJsonArray("tool_calls")
-                for (tc in toolCalls) {
-                    val tcObj = tc.asJsonObject
-                    val index = tcObj.get("index")?.asInt ?: 0
-                    val id = tcObj.get("id")?.asString
-                    val function = tcObj.getAsJsonObject("function")
-                    val name = function?.get("name")?.asString
-                    val arguments = function?.get("arguments")?.asString
+                // Check for tool calls
+                if (delta.has("tool_calls")) {
+                    val toolCalls = delta.getAsJsonArray("tool_calls")
+                    for (tc in toolCalls) {
+                        val tcObj = tc.asJsonObject
+                        val index = tcObj.get("index")?.asInt ?: toolCallBuffers.size
+                        val buffer = toolCallBuffers.getOrPut(index) { ToolCallBuffer() }
 
-                    if (id != null && name != null) {
-                        // New tool call
-                        toolCallBuffers[index] = ToolCallBuffer(id = id, name = name)
-                        if (arguments != null) {
-                            toolCallBuffers[index]?.arguments?.append(arguments)
+                        val id = tcObj.get("id")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                        if (id.isNotBlank()) buffer.id = id
+
+                        val function = tcObj.getAsJsonObject("function")
+                        val name = function?.get("name")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                        if (name.isNotBlank()) buffer.name = name
+
+                        val arguments = function?.get("arguments")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                        if (arguments.isNotEmpty()) {
+                            buffer.arguments.append(arguments)
                         }
-                    } else if (arguments != null) {
-                        // Continuing tool call arguments
-                        toolCallBuffers[index]?.arguments?.append(arguments)
                     }
                 }
 
-                // Check if this is a complete tool call (has finish_reason or no more chunks expected)
-                if (choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull) {
-                    val allToolCalls = toolCallBuffers.values.map { buf ->
-                        ToolCall(id = buf.id, name = buf.name, arguments = buf.arguments.toString())
-                    }
-                    toolCallBuffers.clear()
-                    if (allToolCalls.isNotEmpty()) {
-                        return ParseResult.ToolCalls(allToolCalls)
+                // Older OpenAI-compatible servers may stream a single function_call
+                // instead of tool_calls. Treat it as one normal tool call.
+                if (delta.has("function_call")) {
+                    val function = delta.getAsJsonObject("function_call")
+                    if (function != null) {
+                        val buffer = toolCallBuffers.getOrPut(0) { ToolCallBuffer() }
+                        if (buffer.id.isBlank()) buffer.id = "tool_call_0"
+
+                        val name = function.get("name")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                        if (name.isNotBlank()) buffer.name = name
+
+                        val arguments = function.get("arguments")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                        if (arguments.isNotEmpty()) buffer.arguments.append(arguments)
                     }
                 }
-
-                return ParseResult.Skip
             }
 
             // Check for finish reason
             if (choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull) {
-                // If we have buffered tool calls, return them
-                val allToolCalls = toolCallBuffers.values.map { buf ->
-                    ToolCall(id = buf.id, name = buf.name, arguments = buf.arguments.toString())
-                }
-                toolCallBuffers.clear()
-                if (allToolCalls.isNotEmpty()) {
-                    return ParseResult.ToolCalls(allToolCalls)
-                }
-                return ParseResult.Done
+                results.addAll(flushToolCalls())
+                results.add(ParseResult.Done)
             }
 
-            ParseResult.Skip
+            results
         } catch (e: Exception) {
             // Clear stale buffers on parse error to prevent state leaks
             toolCallBuffers.clear()
-            ParseResult.Skip
+            emptyList()
         }
     }
 
     /**
      * Parse Anthropic-format streaming data chunk.
      */
-    private fun parseAnthropicData(data: String): ParseResult {
+    private fun parseAnthropicData(data: String): List<ParseResult> {
         return try {
             val jsonObject = JsonParser.parseString(data).asJsonObject
-            val type = jsonObject.get("type")?.asString ?: return ParseResult.Skip
+            val type = jsonObject.get("type")?.asString ?: return emptyList()
 
             when (type) {
                 "content_block_start" -> {
+                    val index = jsonObject.get("index")?.asInt ?: 0
                     val contentBlock = jsonObject.getAsJsonObject("content_block")
                     if (contentBlock != null) {
                         val blockType = contentBlock.get("type")?.asString
                         if (blockType == "tool_use") {
                             val id = contentBlock.get("id")?.asString ?: ""
                             val name = contentBlock.get("name")?.asString ?: ""
-                            // Start buffering a new tool call
-                            toolCallBuffers[0] = ToolCallBuffer(id = id, name = name)
+                            val input = contentBlock.getAsJsonObject("input")?.toString().orEmpty()
+                            val buffer = ToolCallBuffer(id = id, name = name)
+                            if (input.isNotEmpty()) buffer.arguments.append(input)
+                            toolCallBuffers[index] = buffer
                         }
                     }
-                    ParseResult.Skip
+                    emptyList()
                 }
                 "content_block_delta" -> {
-                    val delta = jsonObject.getAsJsonObject("delta") ?: return ParseResult.Skip
+                    val index = jsonObject.get("index")?.asInt ?: 0
+                    val delta = jsonObject.getAsJsonObject("delta") ?: return emptyList()
                     val deltaType = delta.get("type")?.asString
 
                     when (deltaType) {
                         "text_delta" -> {
-                            val text = delta.get("text")?.asString ?: return ParseResult.Skip
-                            ParseResult.Content(text)
+                            val text = delta.get("text")?.asString ?: return emptyList()
+                            listOf(ParseResult.Content(text))
                         }
                         "thinking_delta" -> {
-                            val thinking = delta.get("thinking")?.asString ?: return ParseResult.Skip
-                            ParseResult.Thinking(thinking)
+                            val thinking = delta.get("thinking")?.asString ?: return emptyList()
+                            listOf(ParseResult.Thinking(thinking))
                         }
                         "input_json_delta" -> {
-                            val partialJson = delta.get("partial_json")?.asString ?: return ParseResult.Skip
-                            toolCallBuffers[0]?.arguments?.append(partialJson)
-                            ParseResult.Skip
+                            val partialJson = delta.get("partial_json")?.asString ?: return emptyList()
+                            toolCallBuffers.getOrPut(index) { ToolCallBuffer() }.arguments.append(partialJson)
+                            emptyList()
                         }
-                        else -> ParseResult.Skip
+                        else -> emptyList()
                     }
                 }
                 "content_block_stop" -> {
-                    // Check if this is the end of a tool use block
-                    val bufferedToolCall = toolCallBuffers.values.firstOrNull()
-                    if (bufferedToolCall != null) {
-                        val args = bufferedToolCall.arguments.toString().ifEmpty { "{}" }
-                        val result = ParseResult.ToolCall(ToolCall(
-                            id = bufferedToolCall.id,
-                            name = bufferedToolCall.name,
-                            arguments = args
-                        ))
-                        toolCallBuffers.clear()
-                        return result
-                    }
-                    ParseResult.Skip
+                    val index = jsonObject.get("index")?.asInt ?: 0
+                    flushToolCall(index)?.let { listOf(it) } ?: emptyList()
                 }
                 "message_stop" -> {
-                    toolCallBuffers.clear()
-                    ParseResult.Done
+                    flushToolCalls() + ParseResult.Done
                 }
                 "message_delta" -> {
                     // Check for stop reason
                     val delta = jsonObject.getAsJsonObject("delta")
                     if (delta?.has("stop_reason") == true && !delta.get("stop_reason").isJsonNull) {
-                        toolCallBuffers.clear()
-                        ParseResult.Done
+                        flushToolCalls() + ParseResult.Done
                     } else {
-                        ParseResult.Skip
+                        emptyList()
                     }
                 }
                 "error" -> {
                     val error = jsonObject.getAsJsonObject("error")
                     val message = error?.get("message")?.asString ?: "Unknown Anthropic error"
-                    ParseResult.Error(message)
+                    listOf(ParseResult.Error(message))
                 }
-                else -> ParseResult.Skip
+                else -> emptyList()
             }
         } catch (e: Exception) {
-            ParseResult.Skip
+            emptyList()
         }
+    }
+
+    private fun flushToolCalls(): List<ParseResult.ToolCall> {
+        val calls = toolCallBuffers.keys.sorted().mapNotNull { flushToolCall(it) }
+        toolCallBuffers.clear()
+        return calls
+    }
+
+    private fun flushToolCall(index: Int): ParseResult.ToolCall? {
+        val buffer = toolCallBuffers.remove(index) ?: return null
+        if (buffer.name.isBlank()) return null
+        val id = buffer.id.ifBlank { "tool_call_$index" }
+        val args = buffer.arguments.toString().ifBlank { "{}" }
+        return ParseResult.ToolCall(ToolCall(id = id, name = buffer.name, arguments = args))
     }
 
     /**
@@ -295,9 +294,7 @@ class SSEStreamParser {
         data class Content(val text: String) : ParseResult()
         data class Thinking(val text: String) : ParseResult()
         data class ToolCall(val toolCall: com.easyhomework.app.tools.ToolCall) : ParseResult()
-        data class ToolCalls(val toolCalls: List<com.easyhomework.app.tools.ToolCall>) : ParseResult()
         data class Error(val message: String) : ParseResult()
         object Done : ParseResult()
-        object Skip : ParseResult()
     }
 }

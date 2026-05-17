@@ -511,13 +511,13 @@ class AnswerPanelOverlay(
         thinkingContainer = null
         thinkingExpanded = true
 
-        val tools = ToolRegistry.getToolDefinitions()
+        val tools = if (config.supportsFunctionCalling) ToolRegistry.getToolDefinitions() else emptyList()
 
         scope.launch {
             if (config.stream) {
                 val pendingToolCalls = mutableListOf<ToolCall>()
                 var contentReceived = false
-                val parentJob = coroutineContext[Job]!!
+                val parentJob = coroutineContext[Job]
 
                 val timeoutJob = launch {
                     try {
@@ -525,7 +525,7 @@ class AnswerPanelOverlay(
                         if (!contentReceived) {
                             updateBubbleText(loadingView, "请求超时，请检查网络或 API 配置", isLoading = false, isError = true)
                             scrollToBottom()
-                            parentJob.cancel()
+                            parentJob?.cancel()
                         }
                     } catch (_: CancellationException) {}
                 }
@@ -992,7 +992,7 @@ class AnswerPanelOverlay(
         return when (toolName) {
             "get_current_datetime", "get_current_datatime" -> "获取日期时间"
             "calculate" -> "计算表达式"
-            "evaluate_js" -> "执行计算"
+            "evaluate_js", "evaluate_expression" -> "计算表达式"
             "convert_unit" -> "单位转换"
             else -> toolName
         }
@@ -1279,7 +1279,7 @@ class AnswerPanelOverlay(
                 ?.withEndAction { heightIndicator?.visibility = GONE }
                 ?.start()
         }
-        heightIndicatorHandler.postDelayed(hideHeightIndicatorRunnable!!, 800)
+        hideHeightIndicatorRunnable?.let { heightIndicatorHandler.postDelayed(it, 800) }
     }
 
     private fun snapToNearestHeight() {
