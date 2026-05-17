@@ -456,7 +456,7 @@ class LLMRepository {
         stream: Boolean,
         tools: List<ToolDefinition>? = null
     ): String {
-        val apiMessages = mutableListOf<Map<String, Any>>()
+        val apiMessages = mutableListOf<Map<String, Any?>>()
 
         if (config.systemPrompt.isNotBlank()) {
             apiMessages.add(mapOf("role" to "system", "content" to config.systemPrompt))
@@ -492,7 +492,7 @@ class LLMRepository {
                 // Many OpenAI-compatible APIs (DeepSeek, Qwen, etc.) require
                 // content to be null (absent) when tool_calls are present.
                 // Sending an empty string causes API errors.
-                val assistantMsg = mutableMapOf<String, Any>(
+                val assistantMsg = mutableMapOf<String, Any?>(
                     "role" to "assistant",
                     "tool_calls" to toolCallsMap
                 )
