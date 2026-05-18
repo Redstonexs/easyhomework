@@ -78,6 +78,10 @@ class AnswerPanelOverlay(
         const val IMAGE_SOLVING_PROMPT = "请识别并解答图片中的题目，给出详细的解题步骤和最终答案。"
         const val IMAGE_USER_PLACEHOLDER = "[图片题目]"
         const val MAX_TOOL_CALL_DEPTH = 5
+        const val TIMELINE_DOT_SIZE_DP = 18f
+        const val TIMELINE_RAIL_WIDTH_DP = 22f
+        const val TAG_ASSISTANT_TIMELINE = "assistant_timeline"
+        const val TAG_TIMELINE_ITEM = "timeline_item"
     }
 
     // Views
@@ -494,11 +498,24 @@ class AnswerPanelOverlay(
         sendToLLM(loadingView)
     }
 
+    private enum class TimelineTone {
+        THINKING,
+        TOOL,
+        ANSWER,
+        ERROR,
+    }
+
+    private data class TimelineItem(
+        val container: LinearLayout,
+        val contentView: TextView,
+    )
+
     private var currentThinkingText = StringBuilder()
     private var thinkingView: TextView? = null
     private var thinkingContainer: LinearLayout? = null
     private var isThinkingPhase = false
-    private var thinkingExpanded = true
+    private var currentTimelineBody: LinearLayout? = null
+    private var currentAnswerView: TextView? = null
 
     private var toolCallDepth = 0
 
@@ -506,7 +523,7 @@ class AnswerPanelOverlay(
         val config = preferencesManager.getLLMConfig()
 
         if (config.apiKey.isBlank()) {
-            updateBubbleText(loadingView, "请先在设置中配置 API 密钥", isLoading = false, isError = true)
+            updateTimelineItem(loadingView, "配置错误", "请先在设置中配置 API 密钥", isLoading = false, isError = true)
             toolCallDepth = 0
             return
         }
@@ -516,7 +533,7 @@ class AnswerPanelOverlay(
         isThinkingPhase = false
         thinkingView = null
         thinkingContainer = null
-        thinkingExpanded = true
+        currentAnswerView = null
 
         val tools = ToolRegistry.getToolDefinitions()
         val requestMode = when {
@@ -536,7 +553,13 @@ class AnswerPanelOverlay(
                     try {
                         kotlinx.coroutines.delay(60_000)
                         if (!contentReceived) {
-                            updateBubbleText(loadingView, "请求超时，请检查网络或 API 配置", isLoading = false, isError = true)
+                            updateTimelineItem(
+                                loadingView,
+                                "请求超时",
+                                "请求超时，请检查网络或 API 配置",
+                                isLoading = false,
+                                isError = true,
+                            )
                             scrollToBottom()
                             parentJob?.cancel()
                         }
@@ -547,16 +570,15 @@ class AnswerPanelOverlay(
                     llmRepository.streamChatCompletion(config, messages, tools, scope).collect { event ->
                         when (event) {
                             is LLMRepository.StreamEvent.Started -> {
-                                updateBubbleText(loadingView, "思考中...", isLoading = true)
+                                updateTimelineItem(loadingView, "思考", "思考中...", isLoading = true)
                             }
                             is LLMRepository.StreamEvent.Thinking -> {
                                 contentReceived = true
                                 if (!isThinkingPhase) {
                                     isThinkingPhase = true
-                                    updateBubbleText(loadingView, "正在深度思考...", isLoading = true)
-                                    val (container, tv) = addThinkingBubble()
-                                    thinkingContainer = container
-                                    thinkingView = tv
+                                    updateTimelineItem(loadingView, "思考", "正在深度思考...", isLoading = true)
+                                    thinkingContainer = findTimelineItemContainer(loadingView)
+                                    thinkingView = loadingView
                                 }
                                 currentThinkingText.append(event.text)
                                 thinkingView?.let { tv ->
@@ -570,17 +592,13 @@ class AnswerPanelOverlay(
                                 contentReceived = true
                                 if (isThinkingPhase) {
                                     isThinkingPhase = false
-                                    thinkingView?.let { tv ->
-                                        handler.post {
-                                            tv.maxLines = 3
-                                            tv.ellipsize = android.text.TextUtils.TruncateAt.END
-                                        }
-                                    }
-                                    updateBubbleText(loadingView, "", isLoading = true)
+                                    collapseTimelineItem(thinkingContainer)
                                 }
                                 currentStreamingText.append(event.text)
-                                updateBubbleText(
-                                    loadingView,
+                                val answerView = ensureAnswerTimelineView(loadingView)
+                                updateTimelineItem(
+                                    answerView,
+                                    "回答",
                                     currentStreamingText.toString(),
                                     isLoading = true,
                                 )
@@ -595,20 +613,19 @@ class AnswerPanelOverlay(
                                 if (pendingToolCalls.isNotEmpty()) {
                                     val fullText = currentStreamingText.toString()
                                     if (fullText.isNotBlank()) {
-                                        updateBubbleText(loadingView, fullText, isLoading = false)
-                                    } else {
-                                        handler.post {
-                                            try {
-                                                (loadingView.parent as? View)?.let { container ->
-                                                    (container.parent as? ViewGroup)?.removeView(container)
-                                                }
-                                            } catch (_: Exception) {}
-                                        }
+                                        val answerView = ensureAnswerTimelineView(loadingView)
+                                        updateTimelineItem(answerView, "回答", fullText, isLoading = false)
                                     }
 
                                     if (toolCallDepth >= MAX_TOOL_CALL_DEPTH) {
                                         toolCallDepth = 0
-                                        updateBubbleText(loadingView, "工具调用次数过多，已停止", isLoading = false, isError = true)
+                                        updateTimelineItem(
+                                            loadingView,
+                                            "工具调用次数过多",
+                                            "工具调用次数过多，已停止",
+                                            isLoading = false,
+                                            isError = true,
+                                        )
                                         scrollToBottom()
                                     } else {
                                         try {
@@ -621,7 +638,13 @@ class AnswerPanelOverlay(
                                             toolCallDepth = 0
                                             handler.post {
                                                 val errView = addAssistantBubble("", isLoading = false)
-                                                updateBubbleText(errView, "工具执行失败: ${e.message}", isLoading = false, isError = true)
+                                                updateTimelineItem(
+                                                    errView,
+                                                    "工具执行失败",
+                                                    "工具执行失败: ${e.message}",
+                                                    isLoading = false,
+                                                    isError = true,
+                                                )
                                                 scrollToBottom()
                                             }
                                         }
@@ -636,10 +659,12 @@ class AnswerPanelOverlay(
                                                 reasoningContent = currentThinkingText.toString().ifBlank { null },
                                             ),
                                         )
-                                        updateBubbleText(loadingView, fullText, isLoading = false)
+                                        val answerView = ensureAnswerTimelineView(loadingView)
+                                        updateTimelineItem(answerView, "回答", fullText, isLoading = false)
                                     } else if (!contentReceived) {
-                                        updateBubbleText(
+                                        updateTimelineItem(
                                             loadingView,
+                                            "请求错误",
                                             noResponseDetails,
                                             isLoading = false,
                                             isError = true,
@@ -669,12 +694,24 @@ class AnswerPanelOverlay(
                                         )
                                     } catch (e: Exception) {
                                         toolCallDepth = 0
-                                        updateBubbleText(loadingView, "工具执行失败: ${e.message}\n原始错误: ${event.message}", isLoading = false, isError = true)
+                                        updateTimelineItem(
+                                            loadingView,
+                                            "工具执行失败",
+                                            "工具执行失败: ${e.message}\n原始错误: ${event.message}",
+                                            isLoading = false,
+                                            isError = true,
+                                        )
                                         scrollToBottom()
                                     }
                                 } else {
                                     toolCallDepth = 0
-                                    updateBubbleText(loadingView, event.message, isLoading = false, isError = true)
+                                    updateTimelineItem(
+                                        loadingView,
+                                        "请求错误",
+                                        event.message,
+                                        isLoading = false,
+                                        isError = true,
+                                    )
                                     scrollToBottom()
                                 }
                             }
@@ -686,11 +723,17 @@ class AnswerPanelOverlay(
                 } catch (e: Exception) {
                     timeoutJob.cancel()
                     toolCallDepth = 0
-                    updateBubbleText(loadingView, "请求失败: ${e.message}", isLoading = false, isError = true)
+                    updateTimelineItem(
+                        loadingView,
+                        "请求失败",
+                        "请求失败: ${e.message}",
+                        isLoading = false,
+                        isError = true,
+                    )
                     scrollToBottom()
                 }
             } else {
-                updateBubbleText(loadingView, "正在思考...", isLoading = true)
+                updateTimelineItem(loadingView, "思考", "正在思考...", isLoading = true)
                 val result = llmRepository.chatCompletion(config, messages, tools)
                 result.fold(
                     onSuccess = { response ->
@@ -705,14 +748,24 @@ class AnswerPanelOverlay(
                                     reasoningContent = response.thinking?.ifBlank { null },
                                 ),
                             )
-                            updateBubbleText(loadingView, text, isLoading = false)
+                            response.thinking?.takeIf { it.isNotBlank() }?.let {
+                                updateTimelineItem(loadingView, "思考", it, isLoading = false)
+                            }
+                            val answerView = ensureAnswerTimelineView(loadingView)
+                            updateTimelineItem(answerView, "回答", text, isLoading = false)
                             scrollToBottom()
                             saveToHistory()
                         }
                     },
                     onFailure = { error ->
                         toolCallDepth = 0
-                        updateBubbleText(loadingView, error.message ?: "未知错误", isLoading = false, isError = true)
+                        updateTimelineItem(
+                            loadingView,
+                            "请求错误",
+                            error.message ?: "未知错误",
+                            isLoading = false,
+                            isError = true,
+                        )
                         scrollToBottom()
                     },
                 )
@@ -756,12 +809,14 @@ class AnswerPanelOverlay(
             ),
         )
 
+        val timelineBody = currentTimelineBody
         for (toolCall in correctedToolCalls) {
             val argsDisplay = parseToolCallArgs(toolCall)
             val toolName = getToolDisplayName(toolCall.name)
 
             // UI operations must run on main thread
             withContext(Dispatchers.Main) {
+                currentTimelineBody = timelineBody
                 addToolCallBubble(toolName, argsDisplay)
             }
 
@@ -771,13 +826,21 @@ class AnswerPanelOverlay(
 
             // UI operations must run on main thread
             withContext(Dispatchers.Main) {
+                currentTimelineBody = timelineBody
                 addToolResultBubble(result.content, result.isError)
             }
         }
 
         // Switch to main thread for UI + sendToLLM (which launches its own coroutine)
         withContext(Dispatchers.Main) {
-            val newLoadingView = addAssistantBubble("", isLoading = true)
+            currentTimelineBody = timelineBody
+            currentAnswerView = null
+            val newLoadingView = addTimelineStep(
+                title = "思考",
+                content = createLoadingDots().toString(),
+                tone = TimelineTone.THINKING,
+                targetBody = timelineBody,
+            ).contentView
             sendToLLM(newLoadingView)
         }
     }
@@ -800,7 +863,13 @@ class AnswerPanelOverlay(
             toolCallDepth = 0
             handler.post {
                 val errView = addAssistantBubble("", isLoading = false)
-                updateBubbleText(errView, "工具调用次数过多，已停止", isLoading = false, isError = true)
+                updateTimelineItem(
+                    errView,
+                    "工具调用次数过多",
+                    "工具调用次数过多，已停止",
+                    isLoading = false,
+                    isError = true,
+                )
                 scrollToBottom()
             }
             return
@@ -812,7 +881,7 @@ class AnswerPanelOverlay(
             toolCallDepth = 0
             handler.post {
                 val errView = addAssistantBubble("", isLoading = false)
-                updateBubbleText(errView, "工具执行失败: ${e.message}", isLoading = false, isError = true)
+                updateTimelineItem(errView, "工具执行失败", "工具执行失败: ${e.message}", isLoading = false, isError = true)
                 scrollToBottom()
             }
         }
@@ -919,6 +988,7 @@ class AnswerPanelOverlay(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.START
             setPadding(0, dp(4f).toInt(), dp(48f).toInt(), dp(8f).toInt())
+            tag = TAG_ASSISTANT_TIMELINE
         }
 
         val label = TextView(context).apply {
@@ -929,117 +999,196 @@ class AnswerPanelOverlay(
         }
         container.addView(label)
 
-        val bubble = TextView(context).apply {
-            setTextColor(onSurfaceColor)
-            textSize = 14f
-            val bg = GradientDrawable().apply {
-                setColor(surfaceContainerHighColor)
-                cornerRadii = floatArrayOf(
-                    dp(6f), dp(6f), dp(20f), dp(20f),
-                    dp(20f), dp(20f), dp(20f), dp(20f),
-                )
-            }
-            background = bg
-            setPadding(dp(16f).toInt(), dp(12f).toInt(), dp(16f).toInt(), dp(12f).toInt())
-            movementMethod = ScrollingMovementMethod.getInstance()
-            setLineSpacing(dp(4f), 1f)
-
-            if (isLoading) {
-                this.text = if (text.isEmpty()) createLoadingDots() else text
-            } else {
-                markwon.setMarkdown(this, text)
-            }
-
-            tag = "assistant_bubble"
+        val timelineBody = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            tag = "timeline_body"
         }
-
-        container.addView(bubble)
+        container.addView(timelineBody)
         messagesContainer.addView(container)
+        currentTimelineBody = timelineBody
+
+        val firstItem = addTimelineStep(
+            title = if (isLoading) "思考" else "回答",
+            content = text.ifEmpty { createLoadingDots().toString() },
+            tone = if (isLoading) TimelineTone.THINKING else TimelineTone.ANSWER,
+            targetBody = timelineBody,
+            expanded = !isLoading,
+        )
+        currentAnswerView = firstItem.contentView.takeIf { !isLoading }
         scrollToBottom()
 
-        return bubble
+        return firstItem.contentView
     }
 
     private fun createLoadingDots(): CharSequence {
         return "●  ●  ●"
     }
 
-    private fun addThinkingBubble(): Pair<LinearLayout, TextView> {
+    private fun ensureAnswerTimelineView(fallbackView: TextView): TextView {
+        currentAnswerView?.let { return it }
+        val item = addTimelineStep(
+            title = "回答",
+            content = fallbackView.text?.toString().orEmpty(),
+            tone = TimelineTone.ANSWER,
+            expanded = true,
+        )
+        currentAnswerView = item.contentView
+        return item.contentView
+    }
+
+    private fun addTimelineStep(
+        title: String,
+        content: String,
+        tone: TimelineTone,
+        targetBody: LinearLayout? = currentTimelineBody,
+        expanded: Boolean = false,
+    ): TimelineItem {
+        val body = targetBody ?: currentTimelineBody ?: error("Timeline body is not available")
+        val item = createTimelineItem(title, content, tone)
+        body.addView(item.container)
+        if (expanded) {
+            expandTimelineItem(item.container)
+        } else {
+            collapseTimelineItem(item.container)
+        }
+        scrollToBottom()
+        return item
+    }
+
+    private fun createTimelineItem(title: String, content: String, tone: TimelineTone): TimelineItem {
         val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.START
-            setPadding(0, dp(2f).toInt(), dp(48f).toInt(), dp(6f).toInt())
+            orientation = LinearLayout.HORIZONTAL
+            tag = TAG_TIMELINE_ITEM
+            setPadding(0, dp(2f).toInt(), 0, dp(6f).toInt())
         }
 
-        // Clickable header for expand/collapse
-        val headerRow = LinearLayout(context).apply {
+        val card = createTimelineCard(title, content, tone)
+        container.addView(
+            createTimelineRail(tone),
+            LinearLayout.LayoutParams(dp(TIMELINE_RAIL_WIDTH_DP).toInt(), LinearLayout.LayoutParams.MATCH_PARENT),
+        )
+        container.addView(card, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        container.setOnClickListener { toggleTimelineItem(container) }
+        card.setOnClickListener { toggleTimelineItem(container) }
+
+        val contentView = card.getChildAt(1) as TextView
+        return TimelineItem(container, contentView)
+    }
+
+    private fun createTimelineRail(tone: TimelineTone): LinearLayout {
+        val rail = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        val dot = TextView(context).apply {
+            text = "●"
+            setTextColor(timelineAccentColor(tone))
+            textSize = 13f
+            gravity = Gravity.CENTER
+        }
+        val line = View(context).apply {
+            setBackgroundColor(outlineVariantColor)
+        }
+        rail.addView(dot, LinearLayout.LayoutParams(dp(TIMELINE_DOT_SIZE_DP).toInt(), dp(TIMELINE_DOT_SIZE_DP).toInt()))
+        rail.addView(line, LinearLayout.LayoutParams(dp(1f).toInt(), 0, 1f))
+        return rail
+    }
+
+    private fun createTimelineCard(title: String, content: String, tone: TimelineTone): LinearLayout {
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = timelineCardBackground(tone)
+            setPadding(dp(14f).toInt(), dp(10f).toInt(), dp(14f).toInt(), dp(10f).toInt())
+            addView(createTimelineHeader(title, tone))
+            addView(createTimelineContent(content, tone))
+        }
+    }
+
+    private fun createTimelineHeader(title: String, tone: TimelineTone): LinearLayout {
+        val header = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8f).toInt(), dp(6f).toInt(), dp(8f).toInt(), dp(4f).toInt())
-            val bg = GradientDrawable().apply {
-                setColor(tertiaryContainerColor)
-                cornerRadii = floatArrayOf(
-                    dp(14f), dp(14f), dp(14f), dp(14f),
-                    0f, 0f, 0f, 0f,
-                )
-            }
-            background = bg
-            setOnClickListener {
-                thinkingExpanded = !thinkingExpanded
-                thinkingView?.let { tv ->
-                    handler.post {
-                        if (thinkingExpanded) {
-                            tv.maxLines = Int.MAX_VALUE
-                            tv.ellipsize = null
-                        } else {
-                            tv.maxLines = 3
-                            tv.ellipsize = android.text.TextUtils.TruncateAt.END
-                        }
-                    }
-                }
-            }
         }
-
-        val label = TextView(context).apply {
-            text = "思考过程"
-            setTextColor(tertiaryColor)
-            textSize = 11f
+        val titleView = TextView(context).apply {
+            text = title
+            setTextColor(timelineAccentColor(tone))
+            textSize = 13f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            setPadding(dp(4f).toInt(), 0, 0, 0)
         }
-        headerRow.addView(label, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-
-        val expandIndicator = TextView(context).apply {
-            text = "▲"
-            setTextColor(tertiaryColor)
-            textSize = 10f
-            tag = "expand_indicator"
-        }
-        headerRow.addView(expandIndicator)
-
-        container.addView(headerRow)
-
-        val bubble = TextView(context).apply {
+        val indicator = TextView(context).apply {
+            text = "展开"
             setTextColor(onSurfaceVariantColor)
-            textSize = 12f
-            setTypeface(null, Typeface.ITALIC)
-            val bg = GradientDrawable().apply {
-                setColor(tertiaryContainerColor.copy(alpha = 128))
-                cornerRadii = floatArrayOf(
-                    0f, 0f, dp(14f), dp(14f),
-                    dp(14f), dp(14f), dp(14f), dp(14f),
-                )
-            }
-            background = bg
-            setPadding(dp(14f).toInt(), dp(8f).toInt(), dp(14f).toInt(), dp(10f).toInt())
-            setLineSpacing(dp(2f), 1f)
+            textSize = 11f
         }
+        header.addView(titleView, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        header.addView(indicator)
+        return header
+    }
 
-        container.addView(bubble)
-        messagesContainer.addView(container)
-        scrollToBottom()
+    private fun createTimelineContent(content: String, tone: TimelineTone): TextView {
+        return TextView(context).apply {
+            setTextColor(if (tone == TimelineTone.ERROR) errorColor else onSurfaceColor)
+            textSize = if (tone == TimelineTone.ANSWER) 14f else 12f
+            setLineSpacing(dp(3f), 1f)
+            setPadding(0, dp(8f).toInt(), 0, 0)
+            movementMethod = ScrollingMovementMethod.getInstance()
+            if (tone == TimelineTone.ANSWER && content.isNotBlank()) {
+                markwon.setMarkdown(this, content)
+            } else {
+                text = content
+            }
+        }
+    }
 
-        return Pair(container, bubble)
+    private fun timelineCardBackground(tone: TimelineTone): GradientDrawable {
+        return GradientDrawable().apply {
+            setColor(
+                when (tone) {
+                    TimelineTone.THINKING -> tertiaryContainerColor.copy(alpha = 96)
+                    TimelineTone.TOOL -> Color.parseColor("#1A4CAF50")
+                    TimelineTone.ANSWER -> surfaceContainerHighColor
+                    TimelineTone.ERROR -> errorContainerColor
+                },
+            )
+            cornerRadius = dp(16f)
+            setStroke(dp(1f).toInt(), timelineAccentColor(tone).copy(alpha = 90))
+        }
+    }
+
+    private fun timelineAccentColor(tone: TimelineTone): Int {
+        return when (tone) {
+            TimelineTone.THINKING -> tertiaryColor
+            TimelineTone.TOOL -> Color.parseColor("#66BB6A")
+            TimelineTone.ANSWER -> primaryColor
+            TimelineTone.ERROR -> errorColor
+        }
+    }
+
+    private fun toggleTimelineItem(container: LinearLayout) {
+        val expanded = container.isSelected
+        if (expanded) {
+            collapseTimelineItem(container)
+        } else {
+            expandTimelineItem(container)
+        }
+    }
+
+    private fun collapseTimelineItem(container: LinearLayout?) {
+        updateTimelineExpansion(container, expanded = false)
+    }
+
+    private fun expandTimelineItem(container: LinearLayout?) {
+        updateTimelineExpansion(container, expanded = true)
+    }
+
+    private fun updateTimelineExpansion(container: LinearLayout?, expanded: Boolean) {
+        val card = container?.getChildAt(1) as? LinearLayout ?: return
+        val content = card.getChildAt(1) as? TextView ?: return
+        val header = card.getChildAt(0) as? LinearLayout
+        val indicator = header?.getChildAt(1) as? TextView
+        container.isSelected = expanded
+        content.visibility = if (expanded) VISIBLE else GONE
+        indicator?.text = if (expanded) "收起" else "展开"
     }
 
     private fun Int.copy(alpha: Int): Int {
@@ -1088,118 +1237,56 @@ class AnswerPanelOverlay(
     }
 
     private fun addToolCallBubble(toolName: String, args: String) {
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.START
-            setPadding(0, dp(2f).toInt(), dp(48f).toInt(), dp(4f).toInt())
-        }
-
-        val header = TextView(context).apply {
-            text = "调用工具: $toolName"
-            setTextColor(Color.parseColor("#66BB6A"))
-            textSize = 13f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            val bg = GradientDrawable().apply {
-                setColor(Color.parseColor("#1A4CAF50"))
-                cornerRadii = floatArrayOf(
-                    dp(14f), dp(14f), 0f, 0f,
-                    0f, 0f, dp(14f), dp(14f),
-                )
-            }
-            background = bg
-            setPadding(dp(16f).toInt(), dp(12f).toInt(), dp(16f).toInt(), dp(6f).toInt())
-        }
-        container.addView(header)
-
-        if (args.isNotBlank()) {
-            val argsView = TextView(context).apply {
-                text = args
-                setTextColor(Color.parseColor("#A5D6A7"))
-                textSize = 12f
-                val bg = GradientDrawable().apply {
-                    setColor(Color.parseColor("#154CAF50"))
-                    cornerRadii = floatArrayOf(
-                        0f, 0f, dp(14f), dp(14f),
-                        dp(14f), dp(14f), 0f, 0f,
-                    )
-                }
-                background = bg
-                setPadding(dp(16f).toInt(), dp(4f).toInt(), dp(16f).toInt(), dp(10f).toInt())
-                setLineSpacing(dp(2f), 1f)
-            }
-            container.addView(argsView)
-        }
-
-        messagesContainer.addView(container)
-        scrollToBottom()
+        addTimelineStep("调用工具: $toolName", args, TimelineTone.TOOL)
     }
 
     private fun addToolResultBubble(content: String, isError: Boolean) {
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.START
-            setPadding(0, dp(2f).toInt(), dp(48f).toInt(), dp(4f).toInt())
-        }
-
-        val headerText = if (isError) "工具执行失败" else "工具返回结果"
-        val headerColor = if (isError) errorColor else Color.parseColor("#66BB6A")
-        val bgColor = if (isError) errorContainerColor else Color.parseColor("#1A4CAF50")
-        val contentBgColor = if (isError) errorContainerColor.copy(alpha = 0x10) else Color.parseColor("#154CAF50")
-        val contentColor = if (isError) errorColor else Color.parseColor("#A5D6A7")
-
-        val header = TextView(context).apply {
-            text = headerText
-            setTextColor(headerColor)
-            textSize = 12f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            val bg = GradientDrawable().apply {
-                setColor(bgColor)
-                cornerRadii = floatArrayOf(
-                    dp(14f), dp(14f), 0f, 0f,
-                    0f, 0f, dp(14f), dp(14f),
-                )
-            }
-            background = bg
-            setPadding(dp(16f).toInt(), dp(10f).toInt(), dp(16f).toInt(), dp(4f).toInt())
-        }
-        container.addView(header)
-
-        val resultView = TextView(context).apply {
-            text = content
-            setTextColor(contentColor)
-            textSize = 12f
-            val bg = GradientDrawable().apply {
-                setColor(contentBgColor)
-                cornerRadii = floatArrayOf(
-                    0f, 0f, dp(14f), dp(14f),
-                    dp(14f), dp(14f), 0f, 0f,
-                )
-            }
-            background = bg
-            setPadding(dp(16f).toInt(), dp(4f).toInt(), dp(16f).toInt(), dp(10f).toInt())
-            setLineSpacing(dp(2f), 1f)
-        }
-        container.addView(resultView)
-
-        messagesContainer.addView(container)
-        scrollToBottom()
+        addTimelineStep(
+            title = if (isError) "工具执行失败" else "工具返回结果",
+            content = content,
+            tone = if (isError) TimelineTone.ERROR else TimelineTone.TOOL,
+        )
     }
 
-    private fun updateBubbleText(bubble: TextView, text: String, isLoading: Boolean, isError: Boolean = false) {
+    private fun updateTimelineItem(
+        contentView: TextView,
+        title: String,
+        content: String,
+        isLoading: Boolean,
+        isError: Boolean = false,
+    ) {
         handler.post {
-            if (isLoading && text.isNotEmpty()) {
-                bubble.text = "$text ▎"
-            } else if (!isLoading && text.isNotEmpty()) {
-                if (isError) {
-                    bubble.setTextColor(errorColor)
-                    bubble.text = text
-                } else {
-                    markwon.setMarkdown(bubble, text)
-                }
+            val itemContainer = findTimelineItemContainer(contentView)
+            updateTimelineTitle(itemContainer, title)
+            contentView.setTextColor(if (isError) errorColor else onSurfaceColor)
+            val displayContent = if (isLoading && content.isBlank()) createLoadingDots().toString() else content
+            if (isError || isLoading) {
+                contentView.text = if (isLoading && displayContent.isNotEmpty()) "$displayContent ▎" else displayContent
             } else {
-                bubble.text = createLoadingDots()
+                markwon.setMarkdown(contentView, displayContent)
+            }
+            if (!isLoading && !isError && title == "回答") {
+                expandTimelineItem(itemContainer)
             }
         }
+    }
+
+    private fun findTimelineItemContainer(view: View): LinearLayout? {
+        var current = view.parent as? View
+        while (current != null) {
+            if (current is LinearLayout && current.tag == TAG_TIMELINE_ITEM) {
+                return current
+            }
+            current = current.parent as? View
+        }
+        return null
+    }
+
+    private fun updateTimelineTitle(container: LinearLayout?, title: String) {
+        val card = container?.getChildAt(1) as? LinearLayout
+        val header = card?.getChildAt(0) as? LinearLayout
+        val titleView = header?.getChildAt(0) as? TextView
+        titleView?.text = title
     }
 
     private fun scrollToBottom() {
@@ -1227,14 +1314,8 @@ class AnswerPanelOverlay(
 
         for (i in messagesContainer.childCount - 1 downTo 0) {
             val child = messagesContainer.getChildAt(i)
-            if (child is LinearLayout) {
-                for (j in 0 until child.childCount) {
-                    val inner = child.getChildAt(j)
-                    if (inner is TextView && inner.tag == "assistant_bubble") {
-                        messagesContainer.removeViewAt(i)
-                        break
-                    }
-                }
+            if (child is LinearLayout && child.tag == TAG_ASSISTANT_TIMELINE) {
+                messagesContainer.removeViewAt(i)
                 break
             }
         }
