@@ -1,15 +1,37 @@
 package com.easyhomework.app.tools
 
+import androidx.annotation.Keep
+import app.cash.quickjs.QuickJs
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlin.coroutines.coroutineContext
-import kotlin.math.*
+import kotlin.math.E
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.acos
+import kotlin.math.asin
+import kotlin.math.atan
+import kotlin.math.cos
+import kotlin.math.ln
+import kotlin.math.log10
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
+import kotlin.math.tan
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+
+@Keep
+internal interface JavaScriptHostBridge {
+    fun checkStep()
+}
 
 class ToolExecutor {
 
@@ -20,6 +42,7 @@ class ToolExecutor {
                 when (normalizeToolName(toolCall.name)) {
                     "get_current_datetime" -> executeGetCurrentDateTime(toolCall)
                     "calculate", "evaluate_js", "evaluate_expression" -> executeCalculate(toolCall)
+                    "run_javascript" -> executeRunJavaScript(toolCall)
                     "convert_unit" -> executeConvertUnit(toolCall)
                     else -> ToolResult(
                         toolCallId = toolCall.id,
@@ -40,6 +63,7 @@ class ToolExecutor {
     private fun normalizeToolName(name: String): String {
         return when (name.trim()) {
             "get_current_datatime", "get_datetime" -> "get_current_datetime"
+            "run_js", "execute_javascript", "javascript" -> "run_javascript"
             else -> name.trim()
         }
     }
@@ -95,6 +119,133 @@ class ToolExecutor {
 
     private fun evaluateExpression(expr: String): Double {
         return ExpressionParser(expr).parse()
+    }
+
+    private fun executeRunJavaScript(toolCall: ToolCall): ToolResult {
+        val args = parseArgs(toolCall.arguments)
+        val code = args.optString("code", "")
+            .ifBlank { args.optString("script", "") }
+            .ifBlank { args.optString("expression", "") }
+        val validationError = validateJavaScriptCode(code)
+
+        return if (validationError != null) {
+            ToolResult(
+                toolCallId = toolCall.id,
+                content = validationError,
+                isError = true,
+            )
+        } else {
+            try {
+                val result = runJavaScriptWithTimeout(code)
+                ToolResult(toolCallId = toolCall.id, content = result)
+            } catch (e: Exception) {
+                ToolResult(toolCallId = toolCall.id, content = "JavaScript 执行失败: ${e.message}", isError = true)
+            }
+        }
+    }
+
+    private fun validateJavaScriptCode(code: String): String? {
+        return when {
+            code.isBlank() -> "需要提供 code"
+            code.length > MAX_JS_CODE_LENGTH -> "代码过长: ${code.length} 字符，最多 $MAX_JS_CODE_LENGTH 字符"
+            containsLoop(code) && !code.contains("checkStep(") -> {
+                "代码包含循环时，必须在循环体内调用 checkStep()，例如 for (...) { checkStep(); ... }"
+            }
+            else -> null
+        }
+    }
+
+    private fun runJavaScriptWithTimeout(code: String): String {
+        val executor = Executors.newSingleThreadExecutor()
+        return try {
+            val future = executor.submit<String> {
+                evaluateJavaScript(code)
+            }
+            future.get(JS_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            throw IllegalArgumentException("执行超时，最多 ${JS_TIMEOUT_MS}ms。请减少循环次数或改用更直接的算法。", e)
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    private fun evaluateJavaScript(code: String): String {
+        QuickJs.create().use { quickJs ->
+            val bridge = StepLimitBridge(MAX_JS_STEPS)
+            quickJs.set("__host", JavaScriptHostBridge::class.java, bridge)
+            val result = quickJs.evaluate(buildSandboxedScript(code), "llm-tool.js")
+            return formatJavaScriptResult(result)
+        }
+    }
+
+    private fun containsLoop(code: String): Boolean {
+        return Regex("""\b(?:for|while|do)\b""").containsMatchIn(code)
+    }
+
+    private fun buildSandboxedScript(code: String): String {
+        val escapedCode = JSONObject.quote(code)
+        return """
+            (function () {
+              'use strict';
+              const userCode = $escapedCode;
+              const SafeFunction = Function;
+              const globalRef = Function('return this')();
+              const disabled = function (name) {
+                return function () { throw new Error(name + ' is disabled in this tool'); };
+              };
+              globalRef.eval = disabled('eval');
+              globalRef.Function = disabled('Function');
+              globalRef.Date = undefined;
+              globalRef.Math.random = disabled('Math.random');
+              globalRef.console = {
+                log: function () {},
+                warn: function () {},
+                error: function () {}
+              };
+              globalRef.checkStep = function () { __host.checkStep(); };
+              const fn = new SafeFunction('checkStep', userCode + '\nreturn typeof result === "undefined" ? undefined : result;');
+              try {
+                Object.defineProperty(SafeFunction.prototype, 'constructor', { value: undefined });
+                Object.defineProperty(globalRef.checkStep, 'constructor', { value: undefined });
+              } catch (_) {}
+              const value = fn(globalRef.checkStep);
+              if (typeof value === 'undefined') return 'undefined';
+              if (typeof value === 'bigint') return value.toString() + 'n';
+              if (typeof value === 'string') return value;
+              if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+              try {
+                return JSON.stringify(value, null, 2);
+              } catch (_) {
+                return String(value);
+              }
+            })();
+        """.trimIndent()
+    }
+
+    private fun formatJavaScriptResult(value: Any?): String {
+        val text = when (value) {
+            null -> "undefined"
+            is String -> value
+            is Number, is Boolean -> value.toString()
+            else -> value.toString()
+        }.take(MAX_JS_OUTPUT_LENGTH)
+
+        return if (text.length >= MAX_JS_OUTPUT_LENGTH) {
+            "$text\n...输出已截断，最多 $MAX_JS_OUTPUT_LENGTH 字符"
+        } else {
+            text
+        }
+    }
+
+    private class StepLimitBridge(private val maxSteps: Int) : JavaScriptHostBridge {
+        private var steps = 0
+
+        override fun checkStep() {
+            steps++
+            if (steps > maxSteps) {
+                error("执行步数过多，最多 $maxSteps 次 checkStep()")
+            }
+        }
     }
 
     private fun factorial(n: Int): Long {
@@ -214,6 +365,13 @@ class ToolExecutor {
         val start = trimmed.indexOf('{')
         val end = trimmed.lastIndexOf('}')
         return if (start >= 0 && end >= start) trimmed.substring(start, end + 1) else trimmed
+    }
+
+    private companion object {
+        const val MAX_JS_CODE_LENGTH = 6_000
+        const val MAX_JS_OUTPUT_LENGTH = 4_000
+        const val MAX_JS_STEPS = 200_000
+        const val JS_TIMEOUT_MS = 1_500L
     }
 
     private inner class ExpressionParser(expression: String) {

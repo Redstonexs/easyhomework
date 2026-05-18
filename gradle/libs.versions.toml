@@ -18,6 +18,7 @@ navigationCompose = "2.7.7"
 ksp = "1.9.24-1.0.20"
 ktlintGradle = "12.1.1"
 detekt = "1.23.7"
+quickjs = "0.9.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -59,6 +60,9 @@ androidx-security-crypto = { group = "androidx.security", name = "security-crypt
 markwon-core = { group = "io.noties.markwon", name = "core", version.ref = "markwon" }
 markwon-ext-latex = { group = "io.noties.markwon", name = "ext-latex", version.ref = "markwon" }
 markwon-html = { group = "io.noties.markwon", name = "html", version.ref = "markwon" }
+
+# Embedded JavaScript engine
+quickjs-android = { group = "app.cash.quickjs", name = "quickjs-android", version.ref = "quickjs" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

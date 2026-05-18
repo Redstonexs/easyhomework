@@ -45,6 +45,7 @@ object ToolRegistry {
     val tools = listOf(
         createGetCurrentDateTimeTool(),
         createCalculateTool(),
+        createRunJavaScriptTool(),
         createConvertUnitTool(),
     )
 
@@ -110,4 +111,28 @@ object ToolRegistry {
             ),
         )
     }
+
+    private fun createRunJavaScriptTool(): ToolDefinition {
+        return ToolDefinition(
+            name = "run_javascript",
+            description = """
+                在本地 QuickJS 沙箱中执行 JavaScript，用于复杂数学任务：枚举、递推、动态规划、数组统计、组合搜索、验证答案等。
+                代码必须同步执行，不支持网络、文件、定时器、DOM、随机数或外部库。将最终结果赋值给 result。
+                长循环内可调用 checkStep() 主动检查步数限制。适合需要多步数值计算时使用。
+            """.trimIndent(),
+            parameters = mapOf(
+                "type" to "object",
+                "properties" to mapOf(
+                    "code" to mapOf(
+                        "type" to "string",
+                        "description" to "要执行的 JavaScript 代码。示例：$RUN_JAVASCRIPT_EXAMPLE",
+                    ),
+                ),
+                "required" to listOf("code"),
+            ),
+        )
+    }
+
+    private const val RUN_JAVASCRIPT_EXAMPLE =
+        "let sum=0; for (let i=1;i<=100;i++) { checkStep(); sum+=i*i; } result=sum;"
 }

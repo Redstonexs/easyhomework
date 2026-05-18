@@ -112,4 +112,7 @@ dependencies {
     // Markdown rendering
     implementation(libs.markwon.core)
     implementation(libs.markwon.html)
+
+    // Local JavaScript execution for LLM math tools
+    implementation(libs.quickjs.android)
 }

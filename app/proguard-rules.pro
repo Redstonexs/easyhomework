@@ -32,3 +32,8 @@
 # Markwon
 -keep class io.noties.markwon.** { *; }
 -dontwarn org.commonmark.**
+
+# QuickJS host bridge uses reflection/proxies for JavaScript interop
+-keep interface com.easyhomework.app.tools.JavaScriptHostBridge { *; }
+-keep class app.cash.quickjs.** { *; }
+-dontwarn app.cash.quickjs.**

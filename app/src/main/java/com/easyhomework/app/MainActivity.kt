@@ -79,7 +79,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    AppNavigation(
+                    AppNavigationContent(
                         onToggleService = { enabled ->
                             serviceEnabled = enabled
                             if (enabled) {
@@ -125,7 +125,8 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppNavigation(
+@Suppress("FunctionNaming", "FunctionName", "ktlint:standard:function-naming")
+fun AppNavigationContent(
     onToggleService: (Boolean) -> Unit,
     isServiceRunning: Boolean,
     onResyncState: () -> Unit,

@@ -1205,6 +1205,7 @@ class AnswerPanelOverlay(
             "get_current_datetime", "get_current_datatime" -> "获取日期时间"
             "calculate" -> "计算表达式"
             "evaluate_js", "evaluate_expression" -> "计算表达式"
+            "run_javascript", "run_js", "execute_javascript" -> "执行 JavaScript"
             "convert_unit" -> "单位转换"
             else -> toolName
         }
