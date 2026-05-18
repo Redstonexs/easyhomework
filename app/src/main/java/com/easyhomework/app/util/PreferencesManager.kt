@@ -185,6 +185,31 @@ class PreferencesManager(context: Context) {
         get() = prefs.getBoolean(KEY_FLOATING_BALL_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_FLOATING_BALL_ENABLED, value).apply()
 
+    /**
+     * Registers a listener for floating ball enabled state changes.
+     * The returned listener must be unregistered when the caller is disposed.
+     */
+    fun registerFloatingBallEnabledListener(
+        onChanged: (Boolean) -> Unit,
+    ): SharedPreferences.OnSharedPreferenceChangeListener {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_FLOATING_BALL_ENABLED) {
+                onChanged(isFloatingBallEnabled)
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        return listener
+    }
+
+    /**
+     * Unregisters a listener returned by [registerFloatingBallEnabledListener].
+     */
+    fun unregisterFloatingBallEnabledListener(
+        listener: SharedPreferences.OnSharedPreferenceChangeListener,
+    ) {
+        prefs.unregisterOnSharedPreferenceChangeListener(listener)
+    }
+
     var floatingBallX: Int
         get() = prefs.getInt(KEY_BALL_X, -1)
         set(value) = prefs.edit().putInt(KEY_BALL_X, value).apply()

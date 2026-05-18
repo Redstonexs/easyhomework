@@ -70,6 +70,15 @@ class MainActivity : ComponentActivity() {
                         serviceEnabled = preferencesManager.isFloatingBallEnabled
                     }
 
+                    DisposableEffect(Unit) {
+                        val listener = preferencesManager.registerFloatingBallEnabledListener { enabled ->
+                            serviceEnabled = enabled
+                        }
+                        onDispose {
+                            preferencesManager.unregisterFloatingBallEnabledListener(listener)
+                        }
+                    }
+
                     AppNavigation(
                         onToggleService = { enabled ->
                             serviceEnabled = enabled
