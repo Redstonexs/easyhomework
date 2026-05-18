@@ -762,40 +762,13 @@ fun SettingsScreen(
                                     Spacer(modifier = Modifier.height(12.dp))
                                     Text("思考深度", style = MaterialTheme.typography.bodyMedium)
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        ThinkingDepth.entries.forEach { depth ->
-                                            val isSelected = config.thinkingDepth == depth
-                                            FilterChip(
-                                                selected = isSelected,
-                                                onClick = {
-                                                    viewModel.updateConfig(config.copy(thinkingDepth = depth))
-                                                },
-                                                label = {
-                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                        Text(
-                                                            depth.displayName,
-                                                            fontSize = 14.sp,
-                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                        )
-                                                        if (depth != ThinkingDepth.NONE) {
-                                                            Text(
-                                                                when (config.apiType) {
-                                                                    ApiType.OPENAI -> depth.openaiReasoningEffort
-                                                                    ApiType.ANTHROPIC -> "${depth.budgetTokens / 1024}K"
-                                                                },
-                                                                fontSize = 10.sp,
-                                                                color = MaterialTheme.colorScheme.outline,
-                                                            )
-                                                        }
-                                                    }
-                                                },
-                                                colors = FilterChipDefaults.filterChipColors(
-                                                    selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                                    selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                                                ),
-                                            )
-                                        }
-                                    }
+                                    thinkingDepthChips(
+                                        selectedDepth = config.thinkingDepth,
+                                        apiType = config.apiType,
+                                        onDepthSelected = { depth ->
+                                            viewModel.updateConfig(config.copy(thinkingDepth = depth))
+                                        },
+                                    )
 
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
@@ -867,6 +840,52 @@ private fun visionSupportDescription(source: CapabilitySource): String {
         CapabilitySource.API -> "已从模型接口自动识别，可手动覆盖"
         CapabilitySource.AUTO -> "优先接口识别；接口缺失时按模型名称自动判断"
         CapabilitySource.MANUAL -> "已手动设置，截屏后可直接发送图片给模型"
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun thinkingDepthChips(
+    selectedDepth: ThinkingDepth,
+    apiType: ApiType,
+    onDepthSelected: (ThinkingDepth) -> Unit,
+) {
+    androidx.compose.foundation.layout.FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ThinkingDepth.entries.forEach { depth ->
+            val isSelected = selectedDepth == depth
+            FilterChip(
+                modifier = Modifier.widthIn(min = 64.dp),
+                selected = isSelected,
+                onClick = { onDepthSelected(depth) },
+                label = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            depth.displayName,
+                            fontSize = 14.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        )
+                        if (depth != ThinkingDepth.NONE) {
+                            Text(
+                                when (apiType) {
+                                    ApiType.OPENAI -> depth.openaiReasoningEffort
+                                    ApiType.ANTHROPIC -> "${depth.budgetTokens / 1024}K"
+                                },
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.outline,
+                            )
+                        }
+                    }
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                ),
+            )
+        }
     }
 }
 
