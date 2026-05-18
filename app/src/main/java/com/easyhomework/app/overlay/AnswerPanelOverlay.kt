@@ -612,7 +612,11 @@ class AnswerPanelOverlay(
                                         scrollToBottom()
                                     } else {
                                         try {
-                                            processToolCalls(fullText, pendingToolCalls.toList())
+                                            processToolCalls(
+                                                fullText,
+                                                currentThinkingText.toString(),
+                                                pendingToolCalls.toList(),
+                                            )
                                         } catch (e: Exception) {
                                             toolCallDepth = 0
                                             handler.post {
@@ -626,7 +630,12 @@ class AnswerPanelOverlay(
                                     toolCallDepth = 0
                                     val fullText = currentStreamingText.toString()
                                     if (fullText.isNotBlank()) {
-                                        messages.add(ChatMessage.assistant(fullText))
+                                        messages.add(
+                                            ChatMessage.assistant(
+                                                fullText,
+                                                reasoningContent = currentThinkingText.toString().ifBlank { null },
+                                            ),
+                                        )
                                         updateBubbleText(loadingView, fullText, isLoading = false)
                                     } else if (!contentReceived) {
                                         updateBubbleText(
@@ -653,7 +662,11 @@ class AnswerPanelOverlay(
                                 if (pendingToolCalls.isNotEmpty()) {
                                     val fullText = currentStreamingText.toString()
                                     try {
-                                        processToolCalls(fullText, pendingToolCalls.toList())
+                                        processToolCalls(
+                                            fullText,
+                                            currentThinkingText.toString(),
+                                            pendingToolCalls.toList(),
+                                        )
                                     } catch (e: Exception) {
                                         toolCallDepth = 0
                                         updateBubbleText(loadingView, "工具执行失败: ${e.message}\n原始错误: ${event.message}", isLoading = false, isError = true)
@@ -682,11 +695,16 @@ class AnswerPanelOverlay(
                 result.fold(
                     onSuccess = { response ->
                         if (response.toolCalls != null && response.toolCalls.isNotEmpty()) {
-                            handleToolCalls(response.content, response.toolCalls, loadingView)
+                            handleToolCalls(response.content, response.thinking, response.toolCalls, loadingView)
                         } else {
                             toolCallDepth = 0
                             val text = response.content ?: ""
-                            messages.add(ChatMessage.assistant(text))
+                            messages.add(
+                                ChatMessage.assistant(
+                                    text,
+                                    reasoningContent = response.thinking?.ifBlank { null },
+                                ),
+                            )
                             updateBubbleText(loadingView, text, isLoading = false)
                             scrollToBottom()
                             saveToHistory()
@@ -718,7 +736,7 @@ class AnswerPanelOverlay(
         """.trimIndent()
     }
 
-    private suspend fun processToolCalls(fullText: String?, toolCalls: List<ToolCall>) {
+    private suspend fun processToolCalls(fullText: String?, thinkingText: String?, toolCalls: List<ToolCall>) {
         toolCallDepth++
         val correctedToolCalls = toolCalls.map { tc ->
             val correctedName = if (tc.name == "get_current_datatime" || tc.name == "get_datetime") {
@@ -730,7 +748,13 @@ class AnswerPanelOverlay(
             tc.copy(name = correctedName, arguments = correctedArgs)
         }
 
-        messages.add(ChatMessage.assistantWithToolCalls(fullText?.ifBlank { null }, correctedToolCalls))
+        messages.add(
+            ChatMessage.assistantWithToolCalls(
+                fullText?.ifBlank { null },
+                correctedToolCalls,
+                thinkingText?.ifBlank { null },
+            ),
+        )
 
         for (toolCall in correctedToolCalls) {
             val argsDisplay = parseToolCallArgs(toolCall)
@@ -758,7 +782,12 @@ class AnswerPanelOverlay(
         }
     }
 
-    private suspend fun handleToolCalls(fullText: String?, toolCalls: List<ToolCall>, @Suppress("UNUSED_PARAMETER") loadingView: TextView) {
+    private suspend fun handleToolCalls(
+        fullText: String?,
+        thinkingText: String?,
+        toolCalls: List<ToolCall>,
+        @Suppress("UNUSED_PARAMETER") loadingView: TextView,
+    ) {
         handler.post {
             try {
                 (loadingView.parent as? View)?.let { container ->
@@ -778,7 +807,7 @@ class AnswerPanelOverlay(
         }
 
         try {
-            processToolCalls(fullText, toolCalls)
+            processToolCalls(fullText, thinkingText, toolCalls)
         } catch (e: Exception) {
             toolCallDepth = 0
             handler.post {

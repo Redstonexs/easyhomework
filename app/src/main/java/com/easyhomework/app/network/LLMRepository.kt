@@ -830,55 +830,7 @@ class LLMRepository {
         }
 
         messages.filter { it.role != ChatMessage.ROLE_SYSTEM }.forEach { msg ->
-            if (msg.imageBitmap != null && supportsImageInput) {
-                // Multimodal message with image
-                val content = mutableListOf<Map<String, Any>>()
-                content.add(
-                    mapOf(
-                        "type" to "image_url",
-                        "image_url" to mapOf(
-                            "url" to "data:image/jpeg;base64,${bitmapToBase64(msg.imageBitmap)}",
-                            "detail" to "high",
-                        ),
-                    ),
-                )
-                if (msg.content.isNotBlank()) {
-                    content.add(mapOf("type" to "text", "text" to msg.content))
-                }
-                apiMessages.add(mapOf("role" to msg.role, "content" to content))
-            } else if (msg.toolCalls != null) {
-                // Assistant message with tool calls
-                val toolCallsMap = msg.toolCalls.map { tc ->
-                    mapOf(
-                        "id" to tc.id,
-                        "type" to "function",
-                        "function" to mapOf(
-                            "name" to tc.name,
-                            "arguments" to tc.arguments,
-                        ),
-                    )
-                }
-                // Many OpenAI-compatible APIs (DeepSeek, Qwen, etc.) require
-                // content to be null (absent) when tool_calls are present.
-                // Sending an empty string causes API errors.
-                val assistantMsg = mutableMapOf<String, Any?>(
-                    "role" to "assistant",
-                    "tool_calls" to toolCallsMap,
-                )
-                assistantMsg["content"] = if (msg.content.isBlank()) null else msg.content
-                apiMessages.add(assistantMsg)
-            } else if (msg.toolCallId != null) {
-                // Tool result message
-                apiMessages.add(
-                    mapOf(
-                        "role" to "tool",
-                        "tool_call_id" to msg.toolCallId,
-                        "content" to msg.content,
-                    ),
-                )
-            } else {
-                apiMessages.add(mapOf("role" to msg.role, "content" to msg.content))
-            }
+            apiMessages.add(buildOpenAIMessage(msg, supportsImageInput))
         }
 
         val body = mutableMapOf<String, Any>(
@@ -904,6 +856,72 @@ class LLMRepository {
         }
 
         return gson.toJson(body)
+    }
+
+    private fun buildOpenAIMessage(msg: ChatMessage, supportsImageInput: Boolean): Map<String, Any?> {
+        return when {
+            msg.imageBitmap != null && supportsImageInput -> buildOpenAIImageMessage(msg, msg.imageBitmap)
+            msg.toolCalls != null -> buildOpenAIToolCallMessage(msg)
+            msg.toolCallId != null -> buildOpenAIToolResultMessage(msg)
+            msg.role == ChatMessage.ROLE_ASSISTANT && !msg.reasoningContent.isNullOrBlank() ->
+                buildOpenAIReasoningMessage(msg)
+            else -> mapOf("role" to msg.role, "content" to msg.content)
+        }
+    }
+
+    private fun buildOpenAIImageMessage(msg: ChatMessage, bitmap: Bitmap): Map<String, Any> {
+        val content = mutableListOf<Map<String, Any>>()
+        content.add(
+            mapOf(
+                "type" to "image_url",
+                "image_url" to mapOf(
+                    "url" to "data:image/jpeg;base64,${bitmapToBase64(bitmap)}",
+                    "detail" to "high",
+                ),
+            ),
+        )
+        if (msg.content.isNotBlank()) {
+            content.add(mapOf("type" to "text", "text" to msg.content))
+        }
+        return mapOf("role" to msg.role, "content" to content)
+    }
+
+    private fun buildOpenAIToolCallMessage(msg: ChatMessage): Map<String, Any?> {
+        val toolCallsMap = msg.toolCalls.orEmpty().map { tc ->
+            mapOf(
+                "id" to tc.id,
+                "type" to "function",
+                "function" to mapOf(
+                    "name" to tc.name,
+                    "arguments" to tc.arguments,
+                ),
+            )
+        }
+        val assistantMsg = mutableMapOf<String, Any?>(
+            "role" to "assistant",
+            "tool_calls" to toolCallsMap,
+        )
+        assistantMsg["content"] = if (msg.content.isBlank()) null else msg.content
+        msg.reasoningContent?.takeIf { it.isNotBlank() }?.let {
+            assistantMsg["reasoning_content"] = it
+        }
+        return assistantMsg
+    }
+
+    private fun buildOpenAIToolResultMessage(msg: ChatMessage): Map<String, Any?> {
+        return mapOf(
+            "role" to "tool",
+            "tool_call_id" to msg.toolCallId,
+            "content" to msg.content,
+        )
+    }
+
+    private fun buildOpenAIReasoningMessage(msg: ChatMessage): Map<String, Any?> {
+        return mapOf(
+            "role" to msg.role,
+            "content" to msg.content,
+            "reasoning_content" to msg.reasoningContent,
+        )
     }
 
     private fun buildAnthropicBody(
