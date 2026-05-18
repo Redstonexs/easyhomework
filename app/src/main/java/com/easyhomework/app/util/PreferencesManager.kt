@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.easyhomework.app.model.ApiType
+import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.model.ThinkingDepth
 import com.google.gson.Gson
@@ -52,6 +53,7 @@ class PreferencesManager(context: Context) {
                 "thinkingEnabled" to config.thinkingEnabled.toString(),
                 "thinkingDepth" to config.thinkingDepth.name,
                 "supportsVision" to config.supportsVision.toString(),
+                "visionCapabilitySource" to config.visionCapabilitySource.name,
                 "supportsFunctionCalling" to config.supportsFunctionCalling.toString(),
                 "supportsThinking" to config.supportsThinking.toString(),
                 "miniBall" to config.miniBall.toString(),
@@ -95,6 +97,7 @@ class PreferencesManager(context: Context) {
                     thinkingEnabled = data["thinkingEnabled"]?.toBooleanStrictOrNull() ?: false,
                     thinkingDepth = ThinkingDepth.fromString(data["thinkingDepth"] ?: "NONE"),
                     supportsVision = data["supportsVision"]?.toBooleanStrictOrNull() ?: true,
+                    visionCapabilitySource = CapabilitySource.fromString(data["visionCapabilitySource"] ?: "AUTO"),
                     supportsFunctionCalling = data["supportsFunctionCalling"]?.toBooleanStrictOrNull() ?: true,
                     supportsThinking = data["supportsThinking"]?.toBooleanStrictOrNull() ?: false,
                     miniBall = data["miniBall"]?.toBooleanStrictOrNull() ?: false,

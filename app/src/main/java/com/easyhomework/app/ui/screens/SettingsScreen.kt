@@ -86,7 +86,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.easyhomework.app.model.ApiType
-import com.easyhomework.app.model.LLMConfig
+import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.ThinkingDepth
 import com.easyhomework.app.service.FloatingBallService
 import com.easyhomework.app.ui.theme.AccentCyan
@@ -444,7 +444,7 @@ fun SettingsScreen(
                                 label = "模型名称",
                                 value = config.modelName,
                                 onValueChange = {
-                                    viewModel.updateConfig(config.copy(modelName = it))
+                                    viewModel.updateModelName(it)
                                 },
                                 placeholder = if (config.apiType == ApiType.OPENAI) "gpt-4o" else "claude-sonnet-4-20250514",
                                 icon = Icons.Outlined.SmartToy,
@@ -513,11 +513,14 @@ fun SettingsScreen(
                                                 }
                                             },
                                             onClick = {
-                                                viewModel.selectModel(
-                                                    model.id,
-                                                    model.supportsVision,
-                                                    model.supportsFunctionCalling,
-                                                    model.supportsThinking,
+                                                viewModel.updateConfig(
+                                                    config.copy(
+                                                        modelName = model.id,
+                                                        supportsVision = model.supportsVision,
+                                                        visionCapabilitySource = model.visionCapabilitySource,
+                                                        supportsFunctionCalling = model.supportsFunctionCalling,
+                                                        supportsThinking = model.supportsThinking,
+                                                    ),
                                                 )
                                                 showModelDropdown = false
                                             },
@@ -560,11 +563,14 @@ fun SettingsScreen(
                                             )
                                         },
                                         onClick = {
-                                            viewModel.selectModel(
-                                                model.id,
-                                                model.supportsVision,
-                                                model.supportsFunctionCalling,
-                                                model.supportsThinking,
+                                            viewModel.updateConfig(
+                                                config.copy(
+                                                    modelName = model.id,
+                                                    supportsVision = model.supportsVision,
+                                                    visionCapabilitySource = model.visionCapabilitySource,
+                                                    supportsFunctionCalling = model.supportsFunctionCalling,
+                                                    supportsThinking = model.supportsThinking,
+                                                ),
                                             )
                                             showModelDropdown = false
                                         },
@@ -579,7 +585,7 @@ fun SettingsScreen(
                         }
                     }
 
-                    if (config.supportsVision || LLMConfig.modelSupportsVision(config.modelName)) {
+                    if (config.supportsVisionInput()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier
@@ -599,7 +605,7 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "该模型支持图像输入，截屏后可直接发送图片",
+                                "该模型支持图像输入，截屏后可直接发送图片 · ${config.visionCapabilitySource.displayName}",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer,
                             )
@@ -701,14 +707,21 @@ fun SettingsScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("支持图像输入", style = MaterialTheme.typography.bodyMedium)
                                     Text(
-                                        "截屏后可直接发送图片给模型",
+                                        visionSupportDescription(config.visionCapabilitySource),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.outline,
                                     )
                                 }
                                 Switch(
-                                    checked = config.supportsVision,
-                                    onCheckedChange = { viewModel.updateConfig(config.copy(supportsVision = it)) },
+                                    checked = config.supportsVisionInput(),
+                                    onCheckedChange = {
+                                        viewModel.updateConfig(
+                                            config.copy(
+                                                supportsVision = it,
+                                                visionCapabilitySource = CapabilitySource.MANUAL,
+                                            ),
+                                        )
+                                    },
                                     colors = SwitchDefaults.colors(
                                         checkedTrackColor = MaterialTheme.colorScheme.tertiary,
                                     ),
@@ -849,9 +862,18 @@ fun SettingsScreen(
     }
 }
 
+private fun visionSupportDescription(source: CapabilitySource): String {
+    return when (source) {
+        CapabilitySource.API -> "已从模型接口自动识别，可手动覆盖"
+        CapabilitySource.AUTO -> "优先接口识别；接口缺失时按模型名称自动判断"
+        CapabilitySource.MANUAL -> "已手动设置，截屏后可直接发送图片给模型"
+    }
+}
+
 // ---- Reusable Components ----
 
 @Composable
+@Suppress("FunctionNaming", "FunctionName", "ktlint:standard:function-naming")
 fun SectionHeader(title: String) {
     Text(
         title,
@@ -862,6 +884,7 @@ fun SectionHeader(title: String) {
 }
 
 @Composable
+@Suppress("FunctionNaming", "FunctionName", "ktlint:standard:function-naming")
 fun SettingsCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -871,6 +894,7 @@ fun SettingsCard(modifier: Modifier = Modifier, content: @Composable () -> Unit)
 }
 
 @Composable
+@Suppress("FunctionNaming", "FunctionName", "ktlint:standard:function-naming")
 fun SettingsIcon(icon: ImageVector, tint: Color) {
     Box(
         modifier = Modifier
@@ -884,6 +908,7 @@ fun SettingsIcon(icon: ImageVector, tint: Color) {
 }
 
 @Composable
+@Suppress("FunctionNaming", "FunctionName", "ktlint:standard:function-naming")
 fun SettingsTextField(
     label: String,
     value: String,

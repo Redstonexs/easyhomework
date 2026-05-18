@@ -3,6 +3,7 @@ package com.easyhomework.app.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.model.ModelInfo
 import com.easyhomework.app.network.LLMRepository
@@ -51,6 +52,25 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun updateConfig(config: LLMConfig) {
         _config.value = config
+    }
+
+    fun updateModelName(modelName: String) {
+        val modelInfo = _availableModels.value.find { it.id == modelName }
+        _config.value = if (modelInfo != null) {
+            _config.value.copy(
+                modelName = modelName,
+                supportsVision = modelInfo.supportsVision,
+                visionCapabilitySource = modelInfo.visionCapabilitySource,
+                supportsFunctionCalling = modelInfo.supportsFunctionCalling,
+                supportsThinking = modelInfo.supportsThinking,
+            )
+        } else {
+            _config.value.copy(
+                modelName = modelName,
+                supportsVision = LLMConfig.modelSupportsVision(modelName),
+                visionCapabilitySource = CapabilitySource.AUTO,
+            )
+        }
     }
 
     fun selectProvider(id: String) {
@@ -143,8 +163,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             result.fold(
                 onSuccess = { models ->
                     _availableModels.value = models
+                    val modelInfo = models.find { it.id == _config.value.modelName }
+                    val currentModelUpdated = modelInfo != null
+                    if (modelInfo != null) {
+                        _config.value = _config.value.copy(
+                            supportsVision = modelInfo.supportsVision,
+                            visionCapabilitySource = modelInfo.visionCapabilitySource,
+                            supportsFunctionCalling = modelInfo.supportsFunctionCalling,
+                            supportsThinking = modelInfo.supportsThinking,
+                        )
+                    }
                     if (models.isEmpty()) {
                         _saveMessage.value = "未找到可用模型"
+                    } else if (currentModelUpdated) {
+                        _saveMessage.value = "找到 ${models.size} 个模型，已更新当前模型能力"
                     } else {
                         _saveMessage.value = "找到 ${models.size} 个模型"
                     }
@@ -155,19 +187,5 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             )
             _isFetchingModels.value = false
         }
-    }
-
-    fun selectModel(
-        modelName: String,
-        supportsVision: Boolean = false,
-        supportsFunctionCalling: Boolean = true,
-        supportsThinking: Boolean = false,
-    ) {
-        _config.value = _config.value.copy(
-            modelName = modelName,
-            supportsVision = supportsVision,
-            supportsFunctionCalling = supportsFunctionCalling,
-            supportsThinking = supportsThinking,
-        )
     }
 }

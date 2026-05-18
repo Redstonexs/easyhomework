@@ -3,6 +3,7 @@ package com.easyhomework.app.network
 import android.graphics.Bitmap
 import android.util.Base64
 import com.easyhomework.app.model.ApiType
+import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.model.ModelInfo
@@ -269,12 +270,13 @@ class LLMRepository {
             dataArray.map { it.asJsonObject }
                 .map { modelJson ->
                     val id = modelJson.get("id")?.asString ?: return@map null
-                    val supportsVision = detectVisionCapability(modelJson, apiType)
+                    val visionCapability = detectVisionCapability(modelJson, apiType, id)
                     val supportsFunctionCalling = detectFunctionCallingCapability(modelJson, apiType, id)
                     val supportsThinking = detectThinkingCapability(modelJson, apiType, id)
                     ModelInfo(
                         id = id,
-                        supportsVision = supportsVision,
+                        supportsVision = visionCapability.supported,
+                        visionCapabilitySource = visionCapability.source,
                         supportsFunctionCalling = supportsFunctionCalling,
                         supportsThinking = supportsThinking,
                     )
@@ -287,139 +289,148 @@ class LLMRepository {
     }
 
     /**
-     * Detect vision capability from model metadata in API response.
+     * Detect vision capability from API metadata first, then fall back to model-name patterns.
      */
-    private fun detectVisionCapability(modelJson: com.google.gson.JsonObject, apiType: ApiType): Boolean {
-        // Check explicit capabilities field (OpenAI style)
-        val capabilities = modelJson.getAsJsonObject("capabilities")
-        if (capabilities != null) {
-            if (capabilities.has("vision") && capabilities.get("vision").asBoolean) {
-                return true
+    private fun detectVisionCapability(modelJson: JsonObject, apiType: ApiType, modelId: String): CapabilityDetection {
+        return when (detectVisionCapabilityFromMetadata(modelJson)) {
+            CapabilityStatus.SUPPORTED -> CapabilityDetection(supported = true, source = CapabilitySource.API)
+            CapabilityStatus.UNSUPPORTED -> CapabilityDetection(supported = false, source = CapabilitySource.API)
+            CapabilityStatus.UNKNOWN -> CapabilityDetection(
+                supported = fallbackVisionCapability(apiType, modelId),
+                source = CapabilitySource.AUTO,
+            )
+        }
+    }
+
+    private fun detectVisionCapabilityFromMetadata(modelJson: JsonObject): CapabilityStatus {
+        val objects = listOfNotNull(
+            modelJson,
+            objectValue(modelJson.get("architecture")),
+            objectValue(modelJson.get("capabilities")),
+            objectValue(modelJson.get("metadata")),
+        )
+
+        return firstKnownCapability(objects) { detectVisionBooleanCapability(it) }
+            ?: firstKnownCapability(objects) { detectVisionInputCapability(it) }
+            ?: firstKnownCapability(objects) { detectVisionFeatureCapability(it) }
+            ?: CapabilityStatus.UNKNOWN
+    }
+
+    private fun firstKnownCapability(
+        objects: List<JsonObject>,
+        detector: (JsonObject) -> CapabilityStatus,
+    ): CapabilityStatus? {
+        return objects.asSequence()
+            .map(detector)
+            .firstOrNull { it != CapabilityStatus.UNKNOWN }
+    }
+
+    private fun detectVisionBooleanCapability(modelJson: JsonObject): CapabilityStatus {
+        for (field in VISION_BOOLEAN_FIELDS) {
+            val value = booleanValue(modelJson.get(field)) ?: continue
+            return if (value) CapabilityStatus.SUPPORTED else CapabilityStatus.UNSUPPORTED
+        }
+        return CapabilityStatus.UNKNOWN
+    }
+
+    private fun detectVisionInputCapability(modelJson: JsonObject): CapabilityStatus {
+        for (field in VISION_INPUT_FIELDS) {
+            val element = modelJson.get(field) ?: continue
+            return if (elementContainsVisionToken(element)) {
+                CapabilityStatus.SUPPORTED
+            } else {
+                CapabilityStatus.UNSUPPORTED
             }
         }
+        return CapabilityStatus.UNKNOWN
+    }
 
-        // Check modalities field
-        val modalities = modelJson.getAsJsonArray("modalities")
-        if (modalities != null) {
-            for (modality in modalities) {
-                if (modality.asString == "image" || modality.asString == "vision") {
-                    return true
-                }
-            }
+    private fun detectVisionFeatureCapability(modelJson: JsonObject): CapabilityStatus {
+        for (field in VISION_FEATURE_FIELDS) {
+            val element = modelJson.get(field) ?: continue
+            if (elementContainsVisionToken(element)) return CapabilityStatus.SUPPORTED
         }
+        return CapabilityStatus.UNKNOWN
+    }
 
-        // Check input_types field
-        val inputTypes = modelJson.getAsJsonArray("input_types")
-        if (inputTypes != null) {
-            for (inputType in inputTypes) {
-                if (inputType.asString == "image" || inputType.asString == "vision") {
-                    return true
-                }
+    private fun fallbackVisionCapability(apiType: ApiType, modelId: String): Boolean {
+        val lower = modelId.lowercase()
+        val isAnthropicVisionModel = apiType == ApiType.ANTHROPIC && (
+            lower.contains("claude-3") ||
+                lower.contains("claude-sonnet-4") ||
+                lower.contains("claude-opus-4")
+            )
+        return isAnthropicVisionModel || LLMConfig.modelSupportsVision(modelId)
+    }
+
+    private fun booleanValue(element: JsonElement?): Boolean? {
+        if (element == null || element.isJsonNull || !element.isJsonPrimitive) return null
+        val primitive = element.asJsonPrimitive
+        return if (primitive.isBoolean) primitive.asBoolean else null
+    }
+
+    private fun elementContainsVisionToken(element: JsonElement?): Boolean {
+        if (element == null || element.isJsonNull) return false
+        return when {
+            element.isJsonPrimitive -> containsVisionToken(element.asString)
+            element.isJsonArray -> element.asJsonArray.any { elementContainsVisionToken(it) }
+            element.isJsonObject -> element.asJsonObject.entrySet().any { entry ->
+                elementContainsVisionToken(entry.value)
             }
+            else -> false
         }
+    }
 
-        // For Anthropic, all Claude 3+ models support vision
-        if (apiType == ApiType.ANTHROPIC) {
-            val id = modelJson.get("id")?.asString?.lowercase() ?: ""
-            if (id.contains("claude-3") || id.contains("claude-sonnet-4") || id.contains("claude-opus-4")) {
-                return true
-            }
-        }
-
-        return false
+    private fun containsVisionToken(value: String): Boolean {
+        val lower = value.lowercase()
+        return VISION_TOKENS.any { token -> lower.contains(token) }
     }
 
     /**
      * Detect function calling capability from model metadata.
      */
-    private fun detectFunctionCallingCapability(modelJson: com.google.gson.JsonObject, apiType: ApiType, modelId: String): Boolean {
-        // Check explicit capabilities field
-        val capabilities = modelJson.getAsJsonObject("capabilities")
-        if (capabilities != null) {
-            if (capabilities.has("function_calling") && capabilities.get("function_calling").asBoolean) {
-                return true
-            }
-            if (capabilities.has("tool_use") && capabilities.get("tool_use").asBoolean) {
-                return true
-            }
-        }
+    private fun detectFunctionCallingCapability(modelJson: JsonObject, apiType: ApiType, modelId: String): Boolean {
+        val capabilities = objectValue(modelJson.get("capabilities"))
+        val features = arrayValue(modelJson.get("supported_features"))
+        return hasTrueBooleanCapability(capabilities, FUNCTION_CALLING_CAPABILITY_FIELDS) ||
+            containsAnyPrimitiveToken(features, FUNCTION_CALLING_FEATURE_TOKENS) ||
+            fallbackFunctionCallingCapability(apiType, modelId)
+    }
 
-        // Check supported_features field
-        val features = modelJson.getAsJsonArray("supported_features")
-        if (features != null) {
-            for (feature in features) {
-                val f = feature.asString.lowercase()
-                if (f == "function_calling" || f == "tool_use" || f == "tools") {
-                    return true
-                }
-            }
-        }
-
-        // Model name based detection as fallback
+    private fun fallbackFunctionCallingCapability(apiType: ApiType, modelId: String): Boolean {
         val lower = modelId.lowercase()
-
-        // OpenAI models that support function calling
-        if (lower.contains("gpt-4") || lower.contains("gpt-3.5-turbo") ||
-            lower.contains("o1") || lower.contains("o3") || lower.contains("o4")
-        ) {
-            return true
-        }
-
-        // Anthropic Claude models (all Claude 3+ support tool use)
-        if (apiType == ApiType.ANTHROPIC) {
-            if (lower.contains("claude-3") || lower.contains("claude-sonnet-4") || lower.contains("claude-opus-4")) {
-                return true
-            }
-        }
-
-        // Other models that typically support function calling
-        val functionCallingPatterns = listOf(
-            "gemini-1.5", "gemini-2", "gemini-pro",
-            "qwen-max", "qwen-plus", "qwen-turbo",
-            "deepseek-chat", "deepseek-coder",
-            "glm-4", "glm-3",
-            "mistral", "mixtral",
-        )
-
-        return functionCallingPatterns.any { lower.contains(it) }
+        return modelMatchesAny(lower, FUNCTION_CALLING_MODEL_PATTERNS) ||
+            apiType == ApiType.ANTHROPIC && modelMatchesAny(lower, CLAUDE_CAPABILITY_MODEL_PATTERNS)
     }
 
     /**
      * Detect thinking/reasoning capability from model metadata.
      */
-    private fun detectThinkingCapability(modelJson: com.google.gson.JsonObject, apiType: ApiType, modelId: String): Boolean {
-        // Check explicit capabilities field
-        val capabilities = modelJson.getAsJsonObject("capabilities")
-        if (capabilities != null) {
-            if (capabilities.has("reasoning") && capabilities.get("reasoning").asBoolean) {
-                return true
-            }
-            if (capabilities.has("thinking") && capabilities.get("thinking").asBoolean) {
-                return true
-            }
-        }
+    private fun detectThinkingCapability(modelJson: JsonObject, apiType: ApiType, modelId: String): Boolean {
+        val capabilities = objectValue(modelJson.get("capabilities"))
+        return hasTrueBooleanCapability(capabilities, THINKING_CAPABILITY_FIELDS) ||
+            fallbackThinkingCapability(apiType, modelId)
+    }
 
-        // Model name based detection
+    private fun fallbackThinkingCapability(apiType: ApiType, modelId: String): Boolean {
         val lower = modelId.lowercase()
+        return modelMatchesAny(lower, THINKING_MODEL_PATTERNS) ||
+            apiType == ApiType.ANTHROPIC && modelMatchesAny(lower, CLAUDE_CAPABILITY_MODEL_PATTERNS)
+    }
 
-        // OpenAI reasoning models
-        if (lower.contains("o1") || lower.contains("o3") || lower.contains("o4")) {
-            return true
+    private fun hasTrueBooleanCapability(modelJson: JsonObject?, fields: List<String>): Boolean {
+        return fields.any { field -> booleanValue(modelJson?.get(field)) == true }
+    }
+
+    private fun containsAnyPrimitiveToken(element: JsonElement?, tokens: Set<String>): Boolean {
+        if (element == null || element.isJsonNull || !element.isJsonArray) return false
+        return element.asJsonArray.any { item ->
+            item.isJsonPrimitive && item.asString.lowercase() in tokens
         }
+    }
 
-        // Anthropic Claude with extended thinking
-        if (apiType == ApiType.ANTHROPIC) {
-            if (lower.contains("claude-3") || lower.contains("claude-sonnet-4") || lower.contains("claude-opus-4")) {
-                return true
-            }
-        }
-
-        // DeepSeek reasoning models
-        if (lower.contains("deepseek-r1") || lower.contains("deepseek-reasoner")) {
-            return true
-        }
-
-        return false
+    private fun modelMatchesAny(modelId: String, patterns: List<String>): Boolean {
+        return patterns.any { pattern -> modelId.contains(pattern) }
     }
 
     // ---- Response Parsing ----
@@ -1048,11 +1059,85 @@ class LLMRepository {
     }
 
     private fun supportsImageInput(config: LLMConfig): Boolean {
-        return config.supportsVision || LLMConfig.modelSupportsVision(config.modelName)
+        return config.supportsVisionInput()
+    }
+
+    private data class CapabilityDetection(
+        val supported: Boolean,
+        val source: CapabilitySource,
+    )
+
+    private enum class CapabilityStatus {
+        SUPPORTED,
+        UNSUPPORTED,
+        UNKNOWN,
     }
 
     private companion object {
         const val RESPONSE_SAMPLE_LIMIT = 1200
+        val VISION_BOOLEAN_FIELDS = listOf(
+            "vision",
+            "image",
+            "images",
+            "image_input",
+            "supports_vision",
+            "supports_images",
+            "multimodal",
+        )
+        val VISION_INPUT_FIELDS = listOf(
+            "modalities",
+            "input_modalities",
+            "input_types",
+            "input_type",
+            "supported_input_types",
+            "supported_modalities",
+            "modality",
+        )
+        val VISION_FEATURE_FIELDS = listOf(
+            "capabilities",
+            "features",
+            "supported_features",
+        )
+        val VISION_TOKENS = listOf(
+            "image",
+            "vision",
+            "visual",
+            "multimodal",
+        )
+        val FUNCTION_CALLING_CAPABILITY_FIELDS = listOf("function_calling", "tool_use")
+        val FUNCTION_CALLING_FEATURE_TOKENS = setOf("function_calling", "tool_use", "tools")
+        val FUNCTION_CALLING_MODEL_PATTERNS = listOf(
+            "gpt-4",
+            "gpt-3.5-turbo",
+            "o1",
+            "o3",
+            "o4",
+            "gemini-1.5",
+            "gemini-2",
+            "gemini-pro",
+            "qwen-max",
+            "qwen-plus",
+            "qwen-turbo",
+            "deepseek-chat",
+            "deepseek-coder",
+            "glm-4",
+            "glm-3",
+            "mistral",
+            "mixtral",
+        )
+        val THINKING_CAPABILITY_FIELDS = listOf("reasoning", "thinking")
+        val THINKING_MODEL_PATTERNS = listOf(
+            "o1",
+            "o3",
+            "o4",
+            "deepseek-r1",
+            "deepseek-reasoner",
+        )
+        val CLAUDE_CAPABILITY_MODEL_PATTERNS = listOf(
+            "claude-3",
+            "claude-sonnet-4",
+            "claude-opus-4",
+        )
     }
 
     private fun bitmapToBase64(bitmap: Bitmap): String {

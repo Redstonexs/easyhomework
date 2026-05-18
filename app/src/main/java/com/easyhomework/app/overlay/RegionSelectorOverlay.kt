@@ -9,13 +9,17 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.ocr.SmartRegionDetector
 import com.easyhomework.app.ocr.TextRecognitionManager
 import com.easyhomework.app.util.PreferencesManager
 import kotlin.math.max
 import kotlin.math.min
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Full-screen overlay that displays a screenshot and allows the user to select/adjust
@@ -140,7 +144,7 @@ class RegionSelectorOverlay(
 
         // Direct image button (for vision models)
         val config = preferencesManager.getLLMConfig()
-        val isVisionModel = config.supportsVision || LLMConfig.modelSupportsVision(config.modelName)
+        val isVisionModel = config.supportsVisionInput()
 
         val directImageBtn = if (isVisionModel) {
             createButton("直接识图", "#FF9800") {

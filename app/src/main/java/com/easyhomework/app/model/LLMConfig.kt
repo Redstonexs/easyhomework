@@ -34,6 +34,22 @@ enum class ThinkingDepth(val displayName: String, val budgetTokens: Int, val ope
 }
 
 /**
+ * Source of model capability information.
+ */
+enum class CapabilitySource(val displayName: String) {
+    AUTO("自动判断"),
+    API("接口识别"),
+    MANUAL("手动设置"),
+    ;
+
+    companion object {
+        fun fromString(value: String): CapabilitySource {
+            return entries.find { it.name == value } ?: AUTO
+        }
+    }
+}
+
+/**
  * LLM API configuration data class.
  * Supports both OpenAI-compatible and Anthropic API formats.
  */
@@ -53,6 +69,7 @@ data class LLMConfig(
     val thinkingDepth: ThinkingDepth = ThinkingDepth.MEDIUM,
     val miniBall: Boolean = false,
     val supportsVision: Boolean = true,
+    val visionCapabilitySource: CapabilitySource = CapabilitySource.AUTO,
     val supportsFunctionCalling: Boolean = true,
     val supportsThinking: Boolean = false,
 ) {
@@ -67,20 +84,30 @@ data class LLMConfig(
         return "$base/v1/models"
     }
 
+    fun supportsVisionInput(): Boolean {
+        return when (visionCapabilitySource) {
+            CapabilitySource.API, CapabilitySource.MANUAL -> supportsVision
+            CapabilitySource.AUTO -> supportsVision || modelSupportsVision(modelName)
+        }
+    }
+
     companion object {
         /**
          * Well-known vision-capable model patterns for auto-detection.
          */
         private val VISION_MODEL_PATTERNS = listOf(
-            "gpt-4o", "gpt-4-vision", "gpt-4-turbo",
+            "gpt-4o", "gpt-4.1", "gpt-4-vision", "gpt-4-turbo", "gpt-5",
+            "o3", "o4-mini",
             "claude-3", "claude-sonnet-4", "claude-opus-4",
             "gemini-pro-vision", "gemini-1.5", "gemini-2",
-            "qwen-vl", "qwen2-vl", "qwen-max",
+            "qwen-vl", "qwen2-vl", "qwen2.5-vl", "qvq",
             "deepseek-vl",
-            "glm-4v", "glm-4",
+            "glm-4v",
             "internvl",
             "minicpm-v",
             "llava",
+            "pixtral",
+            "llama-4",
             "vision",
         )
 
