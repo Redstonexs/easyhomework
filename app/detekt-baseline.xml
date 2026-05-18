@@ -1,0 +1,319 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>ComplexCondition:AnswerPanelOverlay.kt$AnswerPanelOverlay$sendDirectImage &amp;&amp; message.role == ChatMessage.ROLE_USER &amp;&amp; message.imageBitmap != null &amp;&amp; message.content == IMAGE_SOLVING_PROMPT</ID>
+    <ID>ComplexCondition:LLMRepository.kt$LLMRepository$lower.contains("gpt-4") || lower.contains("gpt-3.5-turbo") || lower.contains("o1") || lower.contains("o3") || lower.contains("o4")</ID>
+    <ID>ComplexCondition:SSEStreamParser.kt$SSEStreamParser$trimmed.isEmpty() || trimmed.startsWith(":") || trimmed.startsWith("event:") || trimmed.startsWith("id:") || trimmed.startsWith("retry:")</ID>
+    <ID>CyclomaticComplexMethod:AnswerPanelOverlay.kt$AnswerPanelOverlay$@SuppressLint("ClickableViewAccessibility") private fun buildUI()</ID>
+    <ID>CyclomaticComplexMethod:AnswerPanelOverlay.kt$AnswerPanelOverlay$private fun sendToLLM(loadingView: TextView)</ID>
+    <ID>CyclomaticComplexMethod:FloatingBallService.kt$FloatingBallService$private fun handleBallTouch(view: View, event: MotionEvent)</ID>
+    <ID>CyclomaticComplexMethod:LLMRepository.kt$LLMRepository$fun streamChatCompletion( config: LLMConfig, messages: List&lt;ChatMessage&gt;, tools: List&lt;ToolDefinition&gt;? = null, scope: CoroutineScope? = null, ): Flow&lt;StreamEvent&gt;</ID>
+    <ID>CyclomaticComplexMethod:LLMRepository.kt$LLMRepository$private fun buildAnthropicBody( config: LLMConfig, messages: List&lt;ChatMessage&gt;, stream: Boolean, tools: List&lt;ToolDefinition&gt;? = null, ): String</ID>
+    <ID>CyclomaticComplexMethod:LLMRepository.kt$LLMRepository$private fun detectFunctionCallingCapability(modelJson: com.google.gson.JsonObject, apiType: ApiType, modelId: String): Boolean</ID>
+    <ID>CyclomaticComplexMethod:LLMRepository.kt$LLMRepository$private fun detectThinkingCapability(modelJson: com.google.gson.JsonObject, apiType: ApiType, modelId: String): Boolean</ID>
+    <ID>CyclomaticComplexMethod:LLMRepository.kt$LLMRepository$private fun detectVisionCapability(modelJson: com.google.gson.JsonObject, apiType: ApiType): Boolean</ID>
+    <ID>CyclomaticComplexMethod:LLMRepository.kt$LLMRepository$private fun parseGenericResponse(json: JsonObject): ChatResponse?</ID>
+    <ID>CyclomaticComplexMethod:LLMRepository.kt$LLMRepository$private fun parseOpenAIResponsesApi(json: JsonObject): ChatResponse?</ID>
+    <ID>CyclomaticComplexMethod:PreferencesManager.kt$PreferencesManager$fun loadProviderConfigs(): List&lt;LLMConfig&gt;</ID>
+    <ID>CyclomaticComplexMethod:SSEStreamParser.kt$SSEStreamParser$private fun appendTopLevelToolEvents(jsonObject: JsonObject, results: MutableList&lt;ParseResult&gt;)</ID>
+    <ID>CyclomaticComplexMethod:SSEStreamParser.kt$SSEStreamParser$private fun parseAnthropicData(data: String): List&lt;ParseResult&gt;</ID>
+    <ID>CyclomaticComplexMethod:SSEStreamParser.kt$SSEStreamParser$private fun parseOpenAIData(data: String): List&lt;ParseResult&gt;</ID>
+    <ID>CyclomaticComplexMethod:SSEStreamParser.kt$SSEStreamParser$private fun parseOpenAITopLevelData(jsonObject: JsonObject): List&lt;ParseResult&gt;</ID>
+    <ID>CyclomaticComplexMethod:SettingsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsScreen( viewModel: SettingsViewModel, isServiceRunning: Boolean, onToggleService: (Boolean) -&gt; Unit, onNavigateToHistory: () -&gt; Unit, onResyncState: () -&gt; Unit = {}, )</ID>
+    <ID>CyclomaticComplexMethod:ToolExecutor.kt$ToolExecutor.ExpressionParser$private fun applyFunction(name: String, first: Double, second: Double?): Double</ID>
+    <ID>FunctionNaming:Components.kt$@Composable fun ConfirmDialog( show: Boolean, title: String, confirmText: String, dismissText: String = "取消", onConfirm: () -&gt; Unit, onDismiss: () -&gt; Unit, text: @Composable () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:Components.kt$@Composable fun ErrorCard( message: String, onDismiss: () -&gt; Unit, onCopy: (() -&gt; Unit)? = null, modifier: Modifier = Modifier, autoDismissMs: Long = 5000L, )</ID>
+    <ID>FunctionNaming:Components.kt$@Composable fun ErrorDisplay( errors: List&lt;String&gt;, onDismissError: (Int) -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>FunctionNaming:Components.kt$@Composable fun FormItem( modifier: Modifier = Modifier, label: @Composable () -&gt; Unit, description: @Composable (() -&gt; Unit)? = null, tail: @Composable () -&gt; Unit = {}, content: @Composable ColumnScope.() -&gt; Unit = {}, )</ID>
+    <ID>FunctionNaming:HistoryScreen.kt$@Composable fun HistoryItem( history: QueryHistory, isExpanded: Boolean, onToggleExpand: () -&gt; Unit, onDelete: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:HistoryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun HistoryScreen( viewModel: HistoryViewModel, onNavigateBack: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:MainActivity.kt$@Composable fun AppNavigation( onToggleService: (Boolean) -&gt; Unit, isServiceRunning: Boolean, onResyncState: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@Composable fun SectionHeader(title: String)</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@Composable fun SettingsCard(modifier: Modifier = Modifier, content: @Composable () -&gt; Unit)</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@Composable fun SettingsIcon(icon: ImageVector, tint: Color)</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@Composable fun SettingsTextField( label: String, value: String, onValueChange: (String) -&gt; Unit, placeholder: String, icon: ImageVector, isPassword: Boolean = false, keyboardType: KeyboardType = KeyboardType.Text, trailingIcon: @Composable (() -&gt; Unit)? = null, )</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsScreen( viewModel: SettingsViewModel, isServiceRunning: Boolean, onToggleService: (Boolean) -&gt; Unit, onNavigateToHistory: () -&gt; Unit, onResyncState: () -&gt; Unit = {}, )</ID>
+    <ID>FunctionNaming:Theme.kt$@Composable fun EasyHomeworkTheme( content: @Composable () -&gt; Unit, )</ID>
+    <ID>FunctionOnlyReturningConstant:AnswerPanelOverlay.kt$AnswerPanelOverlay$private fun createLoadingDots(): CharSequence</ID>
+    <ID>ImplicitDefaultLocale:SettingsScreen.kt$String.format("%.1f", config.temperature)</ID>
+    <ID>LargeClass:AnswerPanelOverlay.kt$AnswerPanelOverlay : FrameLayout</ID>
+    <ID>LargeClass:LLMRepository.kt$LLMRepository</ID>
+    <ID>LongMethod:AnswerPanelOverlay.kt$AnswerPanelOverlay$@SuppressLint("ClickableViewAccessibility") private fun buildUI()</ID>
+    <ID>LongMethod:AnswerPanelOverlay.kt$AnswerPanelOverlay$private fun addThinkingBubble(): Pair&lt;LinearLayout, TextView&gt;</ID>
+    <ID>LongMethod:AnswerPanelOverlay.kt$AnswerPanelOverlay$private fun addUserBubbleWithImage(text: String)</ID>
+    <ID>LongMethod:AnswerPanelOverlay.kt$AnswerPanelOverlay$private fun sendToLLM(loadingView: TextView)</ID>
+    <ID>LongMethod:HistoryScreen.kt$@Composable fun HistoryItem( history: QueryHistory, isExpanded: Boolean, onToggleExpand: () -&gt; Unit, onDelete: () -&gt; Unit, )</ID>
+    <ID>LongMethod:HistoryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun HistoryScreen( viewModel: HistoryViewModel, onNavigateBack: () -&gt; Unit, )</ID>
+    <ID>LongMethod:LLMRepository.kt$LLMRepository$fun streamChatCompletion( config: LLMConfig, messages: List&lt;ChatMessage&gt;, tools: List&lt;ToolDefinition&gt;? = null, scope: CoroutineScope? = null, ): Flow&lt;StreamEvent&gt;</ID>
+    <ID>LongMethod:LLMRepository.kt$LLMRepository$private fun buildAnthropicBody( config: LLMConfig, messages: List&lt;ChatMessage&gt;, stream: Boolean, tools: List&lt;ToolDefinition&gt;? = null, ): String</ID>
+    <ID>LongMethod:LLMRepository.kt$LLMRepository$private fun buildOpenAIBody( config: LLMConfig, messages: List&lt;ChatMessage&gt;, stream: Boolean, tools: List&lt;ToolDefinition&gt;? = null, ): String</ID>
+    <ID>LongMethod:RegionSelectorOverlay.kt$RegionSelectorOverlay$@SuppressLint("SetTextI18n") private fun confirmSelection(sendDirectImage: Boolean)</ID>
+    <ID>LongMethod:SSEStreamParser.kt$SSEStreamParser$private fun parseAnthropicData(data: String): List&lt;ParseResult&gt;</ID>
+    <ID>LongMethod:SSEStreamParser.kt$SSEStreamParser$private fun parseOpenAIData(data: String): List&lt;ParseResult&gt;</ID>
+    <ID>LongMethod:SettingsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsScreen( viewModel: SettingsViewModel, isServiceRunning: Boolean, onToggleService: (Boolean) -&gt; Unit, onNavigateToHistory: () -&gt; Unit, onResyncState: () -&gt; Unit = {}, )</ID>
+    <ID>LongParameterList:Components.kt$( show: Boolean, title: String, confirmText: String, dismissText: String = "取消", onConfirm: () -&gt; Unit, onDismiss: () -&gt; Unit, text: @Composable () -&gt; Unit, )</ID>
+    <ID>LongParameterList:LLMRepository.kt$LLMRepository$( config: LLMConfig, statusCode: Int, contentType: String?, lineCount: Int, payloadCount: Int, payload: String, )</ID>
+    <ID>LongParameterList:SettingsScreen.kt$( label: String, value: String, onValueChange: (String) -&gt; Unit, placeholder: String, icon: ImageVector, isPassword: Boolean = false, keyboardType: KeyboardType = KeyboardType.Text, trailingIcon: @Composable (() -&gt; Unit)? = null, )</ID>
+    <ID>LoopWithTooManyJumpStatements:LLMRepository.kt$LLMRepository$for</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$0.25f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$0.28f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$0.2f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$0.35f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$0.50f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$0.55f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$0.5f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$0.65f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$0.75f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$0.80f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$0.8f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$0.92f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$1.5f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$100</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$1000</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$10f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$11f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$1200f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$12f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$13f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$14f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$150</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$15f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$160f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$16f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$18f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$2.5f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$200</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$20f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$24f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$250</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$28f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$3</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$300</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$350</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$3f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$400</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$48f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$4f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$50</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$60</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$60_000</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$6f</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$8</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$800</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$85</ID>
+    <ID>MagicNumber:AnswerPanelOverlay.kt$AnswerPanelOverlay$8f</ID>
+    <ID>MagicNumber:Color.kt$0x40FFFFFF</ID>
+    <ID>MagicNumber:Color.kt$0x806C63FF</ID>
+    <ID>MagicNumber:Color.kt$0xCC000000</ID>
+    <ID>MagicNumber:Color.kt$0xFF00BCD4</ID>
+    <ID>MagicNumber:Color.kt$0xFF0F0F1A</ID>
+    <ID>MagicNumber:Color.kt$0xFF1A1A2E</ID>
+    <ID>MagicNumber:Color.kt$0xFF1E1E32</ID>
+    <ID>MagicNumber:Color.kt$0xFF252540</ID>
+    <ID>MagicNumber:Color.kt$0xFF3F8CFF</ID>
+    <ID>MagicNumber:Color.kt$0xFF448AFF</ID>
+    <ID>MagicNumber:Color.kt$0xFF4CAF50</ID>
+    <ID>MagicNumber:Color.kt$0xFF6B6B80</ID>
+    <ID>MagicNumber:Color.kt$0xFF6C63FF</ID>
+    <ID>MagicNumber:Color.kt$0xFF7C4DFF</ID>
+    <ID>MagicNumber:Color.kt$0xFFA0A0B8</ID>
+    <ID>MagicNumber:Color.kt$0xFFE8E8F0</ID>
+    <ID>MagicNumber:Color.kt$0xFFEF5350</ID>
+    <ID>MagicNumber:Color.kt$0xFFFF9800</ID>
+    <ID>MagicNumber:FloatingBallService.kt$FloatingBallService$0.5f</ID>
+    <ID>MagicNumber:FloatingBallService.kt$FloatingBallService$0.8f</ID>
+    <ID>MagicNumber:FloatingBallService.kt$FloatingBallService$0.9f</ID>
+    <ID>MagicNumber:FloatingBallService.kt$FloatingBallService$100</ID>
+    <ID>MagicNumber:FloatingBallService.kt$FloatingBallService$20</ID>
+    <ID>MagicNumber:FloatingBallService.kt$FloatingBallService$250</ID>
+    <ID>MagicNumber:FloatingBallService.kt$FloatingBallService$300</ID>
+    <ID>MagicNumber:FloatingBallService.kt$FloatingBallService$400</ID>
+    <ID>MagicNumber:FloatingBallView.kt$FloatingBallView$0.13f</ID>
+    <ID>MagicNumber:FloatingBallView.kt$FloatingBallView$0.3f</ID>
+    <ID>MagicNumber:FloatingBallView.kt$FloatingBallView$0.9f</ID>
+    <ID>MagicNumber:FloatingBallView.kt$FloatingBallView$1.06f</ID>
+    <ID>MagicNumber:FloatingBallView.kt$FloatingBallView$220</ID>
+    <ID>MagicNumber:FloatingBallView.kt$FloatingBallView$3000</ID>
+    <ID>MagicNumber:FloatingBallView.kt$FloatingBallView$30f</ID>
+    <ID>MagicNumber:FloatingBallView.kt$FloatingBallView$4f</ID>
+    <ID>MagicNumber:FloatingBallView.kt$FloatingBallView$5f</ID>
+    <ID>MagicNumber:FloatingBallView.kt$FloatingBallView$6f</ID>
+    <ID>MagicNumber:FloatingBallView.kt$FloatingBallView$8f</ID>
+    <ID>MagicNumber:HistoryScreen.kt$60</ID>
+    <ID>MagicNumber:LLMConfig.kt$ThinkingDepth.HIGH$24576</ID>
+    <ID>MagicNumber:LLMConfig.kt$ThinkingDepth.LOW$2048</ID>
+    <ID>MagicNumber:LLMConfig.kt$ThinkingDepth.MEDIUM$8192</ID>
+    <ID>MagicNumber:LLMConfig.kt$ThinkingDepth.XHIGH$50000</ID>
+    <ID>MagicNumber:LLMRepository.kt$LLMRepository$1024</ID>
+    <ID>MagicNumber:LLMRepository.kt$LLMRepository$120</ID>
+    <ID>MagicNumber:LLMRepository.kt$LLMRepository$30</ID>
+    <ID>MagicNumber:LLMRepository.kt$LLMRepository$85</ID>
+    <ID>MagicNumber:PreferencesManager.kt$PreferencesManager$0.65f</ID>
+    <ID>MagicNumber:PreferencesManager.kt$PreferencesManager$300</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$0.15f</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$0.1f</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$0.75f</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$0.9f</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$12</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$14f</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$16</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$16f</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$20</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$2000</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$24</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$32</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$32f</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$3f</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$40f</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$48</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$4f</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$50f</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$6f</ID>
+    <ID>MagicNumber:RegionSelectorOverlay.kt$RegionSelectorOverlay$8f</ID>
+    <ID>MagicNumber:ScreenCapturePermissionActivity.kt$ScreenCapturePermissionActivity$500</ID>
+    <ID>MagicNumber:ScreenCaptureService.kt$ScreenCaptureService$100</ID>
+    <ID>MagicNumber:ScreenCaptureService.kt$ScreenCaptureService$300</ID>
+    <ID>MagicNumber:SettingsScreen.kt$1024</ID>
+    <ID>MagicNumber:SmartRegionDetector.kt$SmartRegionDetector$0.01</ID>
+    <ID>MagicNumber:SmartRegionDetector.kt$SmartRegionDetector$0.05</ID>
+    <ID>MagicNumber:SmartRegionDetector.kt$SmartRegionDetector$0.05f</ID>
+    <ID>MagicNumber:SmartRegionDetector.kt$SmartRegionDetector$0.08</ID>
+    <ID>MagicNumber:SmartRegionDetector.kt$SmartRegionDetector$0.08f</ID>
+    <ID>MagicNumber:SmartRegionDetector.kt$SmartRegionDetector$3</ID>
+    <ID>MagicNumber:SmartRegionDetector.kt$SmartRegionDetector$5</ID>
+    <ID>MagicNumber:SmartRegionDetector.kt$SmartRegionDetector$6</ID>
+    <ID>MagicNumber:SmartRegionDetector.kt$SmartRegionDetector$7</ID>
+    <ID>MagicNumber:SmartRegionDetector.kt$SmartRegionDetector$8</ID>
+    <ID>MagicNumber:TextRecognitionManager.kt$TextRecognitionManager$5</ID>
+    <ID>MagicNumber:Theme.kt$0xFF0D0D18</ID>
+    <ID>MagicNumber:Theme.kt$0xFF141425</ID>
+    <ID>MagicNumber:Theme.kt$0xFF2A2A48</ID>
+    <ID>MagicNumber:Theme.kt$0xFF333350</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.000001</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.0001</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.00064516</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.001</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.01</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.0254</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.0283495</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.0295735</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.03333</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.05</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.092903</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.236588</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.3048</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.3333</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.453592</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.473176</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.5</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.836127</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.9144</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$0.946353</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$1000</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$1000.0</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$10000.0</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$1000000.0</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$1609.344</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$20</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$273.15</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$3.333</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$3.78541</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$32</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$3600.0</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$4046.86</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$5</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$5.0</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$500.0</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$60.0</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$604800.0</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$666.667</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$86400.0</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$9</ID>
+    <ID>MagicNumber:ToolExecutor.kt$ToolExecutor$9.0</ID>
+    <ID>MaxLineLength:AnswerPanelOverlay.kt$AnswerPanelOverlay$private suspend</ID>
+    <ID>MaxLineLength:AnswerPanelOverlay.kt$AnswerPanelOverlay$updateBubbleText(errView, "工具执行失败: ${e.message}", isLoading = false, isError = true)</ID>
+    <ID>MaxLineLength:AnswerPanelOverlay.kt$AnswerPanelOverlay$updateBubbleText(loadingView, "工具执行失败: ${e.message}\n原始错误: ${event.message}", isLoading = false, isError = true)</ID>
+    <ID>MaxLineLength:LLMRepository.kt$LLMRepository$private</ID>
+    <ID>MaxLineLength:PreferencesManager.kt$PreferencesManager$thinkingDepth = ThinkingDepth.fromString(prefs.getString(KEY_THINKING_DEPTH, defaults.thinkingDepth.name) ?: defaults.thinkingDepth.name)</ID>
+    <ID>MaxLineLength:SSEStreamParser.kt$SSEStreamParser$id = textValue(toolCallObj.get("id")) ?: textValue(toolCallObj.get("call_id")) ?: "tool_call_$fallbackIndex"</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp))</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$Icon(Icons.Filled.Circle, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$Text("流式输出", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$placeholder = if (config.apiType == ApiType.OPENAI) "gpt-4o" else "claude-sonnet-4-20250514"</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$placeholder = if (config.apiType == ApiType.OPENAI) "https://api.openai.com" else "https://api.anthropic.com"</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$selectedContainerColor = MaterialTheme.colorScheme.tertiaryContainer</ID>
+    <ID>MaxLineLength:ToolExecutor.kt$ToolExecutor$val formatted = if (result == result.toLong().toDouble()) result.toLong().toString() else "%.6f".format(result).trimEnd('0').trimEnd('.')</ID>
+    <ID>NestedBlockDepth:AnswerPanelOverlay.kt$AnswerPanelOverlay$private fun regenerateAnswer()</ID>
+    <ID>NestedBlockDepth:LLMRepository.kt$LLMRepository$private fun buildAnthropicBody( config: LLMConfig, messages: List&lt;ChatMessage&gt;, stream: Boolean, tools: List&lt;ToolDefinition&gt;? = null, ): String</ID>
+    <ID>NestedBlockDepth:SSEStreamParser.kt$SSEStreamParser$private fun parseAnthropicData(data: String): List&lt;ParseResult&gt;</ID>
+    <ID>NestedBlockDepth:SSEStreamParser.kt$SSEStreamParser$private fun parseOpenAIData(data: String): List&lt;ParseResult&gt;</ID>
+    <ID>PrintStackTrace:FloatingBallService.kt$FloatingBallService$e</ID>
+    <ID>ReturnCount:AnswerPanelOverlay.kt$AnswerPanelOverlay$private fun getContainerHeight(): Int</ID>
+    <ID>ReturnCount:LLMRepository.kt$LLMRepository$private fun appendFallbackPayload(target: StringBuilder, line: String): Boolean</ID>
+    <ID>ReturnCount:LLMRepository.kt$LLMRepository$private fun detectFunctionCallingCapability(modelJson: com.google.gson.JsonObject, apiType: ApiType, modelId: String): Boolean</ID>
+    <ID>ReturnCount:LLMRepository.kt$LLMRepository$private fun detectThinkingCapability(modelJson: com.google.gson.JsonObject, apiType: ApiType, modelId: String): Boolean</ID>
+    <ID>ReturnCount:LLMRepository.kt$LLMRepository$private fun detectVisionCapability(modelJson: com.google.gson.JsonObject, apiType: ApiType): Boolean</ID>
+    <ID>ReturnCount:LLMRepository.kt$LLMRepository$private fun parseOpenAIResponse(json: JsonObject): ChatResponse?</ID>
+    <ID>ReturnCount:LLMRepository.kt$LLMRepository$private suspend fun kotlinx.coroutines.flow.FlowCollector&lt;StreamEvent&gt;.emitFallbackResponse( body: String, apiType: ApiType, ): FallbackEmission</ID>
+    <ID>ReturnCount:RegionSelectorOverlay.kt$RegionSelectorOverlay$@SuppressLint("ClickableViewAccessibility") override fun onTouchEvent(event: MotionEvent): Boolean</ID>
+    <ID>ReturnCount:RegionSelectorOverlay.kt$RegionSelectorOverlay$private fun getHandleAt(x: Float, y: Float, sel: RectF): Handle</ID>
+    <ID>ReturnCount:SSEStreamParser.kt$SSEStreamParser$fun parseLine(line: String, apiType: ApiType = ApiType.OPENAI): List&lt;ParseResult&gt;</ID>
+    <ID>ReturnCount:SSEStreamParser.kt$SSEStreamParser$private fun flushToolCall(index: Int): ParseResult.ToolCall?</ID>
+    <ID>ReturnCount:SSEStreamParser.kt$SSEStreamParser$private fun parseAnthropicData(data: String): List&lt;ParseResult&gt;</ID>
+    <ID>ReturnCount:SSEStreamParser.kt$SSEStreamParser$private fun parseCompleteToolCall(element: JsonElement, fallbackIndex: Int): ToolCall?</ID>
+    <ID>ReturnCount:SSEStreamParser.kt$SSEStreamParser$private fun parseOpenAIData(data: String): List&lt;ParseResult&gt;</ID>
+    <ID>ReturnCount:SettingsViewModel.kt$SettingsViewModel$fun validateConfig(): String?</ID>
+    <ID>ReturnCount:SmartRegionDetector.kt$SmartRegionDetector$suspend fun detectQuestionRegion(bitmap: Bitmap): DetectionResult</ID>
+    <ID>ReturnCount:ToolExecutor.kt$ToolExecutor$private fun convertUnit(value: Double, from: String, to: String): Double</ID>
+    <ID>ReturnCount:ToolExecutor.kt$ToolExecutor$private fun convertWithFactors(value: Double, from: String, to: String, factors: Map&lt;String, Double&gt;): Double?</ID>
+    <ID>ReturnCount:ToolExecutor.kt$ToolExecutor.ExpressionParser$private fun parsePrimary(): Double</ID>
+    <ID>SwallowedException:AnswerPanelOverlay.kt$AnswerPanelOverlay$e2: Exception</ID>
+    <ID>SwallowedException:AnswerPanelOverlay.kt$AnswerPanelOverlay$e: Exception</ID>
+    <ID>SwallowedException:AnswerPanelOverlay.kt$AnswerPanelOverlay$e: kotlinx.coroutines.CancellationException</ID>
+    <ID>SwallowedException:LLMRepository.kt$LLMRepository$e: Exception</ID>
+    <ID>SwallowedException:PreferencesManager.kt$PreferencesManager$e: Exception</ID>
+    <ID>SwallowedException:RegionSelectorOverlay.kt$RegionSelectorOverlay$e: Exception</ID>
+    <ID>SwallowedException:SSEStreamParser.kt$SSEStreamParser$e: Exception</ID>
+    <ID>SwallowedException:SmartRegionDetector.kt$SmartRegionDetector$e: Exception</ID>
+    <ID>SwallowedException:ToolExecutor.kt$ToolExecutor$e: Exception</ID>
+    <ID>ThrowsCount:ToolExecutor.kt$ToolExecutor.ExpressionParser$private fun applyFunction(name: String, first: Double, second: Double?): Double</ID>
+    <ID>TooGenericExceptionCaught:AnswerPanelOverlay.kt$AnswerPanelOverlay$e2: Exception</ID>
+    <ID>TooGenericExceptionCaught:AnswerPanelOverlay.kt$AnswerPanelOverlay$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:FloatingBallService.kt$FloatingBallService$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:LLMRepository.kt$LLMRepository$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:PreferencesManager.kt$PreferencesManager$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:RegionSelectorOverlay.kt$RegionSelectorOverlay$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SSEStreamParser.kt$SSEStreamParser$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ScreenCaptureService.kt$ScreenCaptureService$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SmartRegionDetector.kt$SmartRegionDetector$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:TextRecognitionManager.kt$TextRecognitionManager$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ToolExecutor.kt$ToolExecutor$e: Exception</ID>
+    <ID>TooManyFunctions:AnswerPanelOverlay.kt$AnswerPanelOverlay : FrameLayout</ID>
+    <ID>TooManyFunctions:FloatingBallService.kt$FloatingBallService : Service</ID>
+    <ID>TooManyFunctions:LLMRepository.kt$LLMRepository</ID>
+    <ID>TooManyFunctions:RegionSelectorOverlay.kt$RegionSelectorOverlay : FrameLayout</ID>
+    <ID>TooManyFunctions:SSEStreamParser.kt$SSEStreamParser</ID>
+    <ID>TooManyFunctions:ToolExecutor.kt$ToolExecutor</ID>
+    <ID>TooManyFunctions:ToolExecutor.kt$ToolExecutor$ExpressionParser</ID>
+    <ID>UnusedPrivateProperty:AnswerPanelOverlay.kt$AnswerPanelOverlay$private val surfaceContainerHighestColor = Color.parseColor("#2A2A48") // surfaceContainerHighest</ID>
+    <ID>UnusedPrivateProperty:FloatingBallService.kt$FloatingBallService.Companion$private const val BALL_SIZE_MINI = 14</ID>
+    <ID>UnusedPrivateProperty:FloatingBallView.kt$FloatingBallView$private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE style = Paint.Style.STROKE strokeWidth = 6f strokeCap = Paint.Cap.ROUND strokeJoin = Paint.Join.ROUND }</ID>
+    <ID>UseRequire:ToolExecutor.kt$ToolExecutor$throw IllegalArgumentException("负数没有阶乘")</ID>
+    <ID>UseRequire:ToolExecutor.kt$ToolExecutor$throw IllegalArgumentException("阶乘结果过大 (n&gt;20)")</ID>
+    <ID>UseRequire:ToolExecutor.kt$ToolExecutor.ExpressionParser$throw IllegalArgumentException("Expected number at position $pos")</ID>
+    <ID>UseRequire:ToolExecutor.kt$ToolExecutor.ExpressionParser$throw IllegalArgumentException("Unexpected character '${input[pos]}' at position $pos")</ID>
+    <ID>WildcardImport:AnswerPanelOverlay.kt$import android.graphics.*</ID>
+    <ID>WildcardImport:AnswerPanelOverlay.kt$import android.view.*</ID>
+    <ID>WildcardImport:AnswerPanelOverlay.kt$import android.widget.*</ID>
+    <ID>WildcardImport:AnswerPanelOverlay.kt$import kotlinx.coroutines.*</ID>
+    <ID>WildcardImport:FloatingBallView.kt$import android.graphics.*</ID>
+    <ID>WildcardImport:HistoryDao.kt$import androidx.room.*</ID>
+    <ID>WildcardImport:MainActivity.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:RegionSelectorOverlay.kt$import android.graphics.*</ID>
+    <ID>WildcardImport:RegionSelectorOverlay.kt$import kotlinx.coroutines.*</ID>
+    <ID>WildcardImport:ToolExecutor.kt$import kotlin.math.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

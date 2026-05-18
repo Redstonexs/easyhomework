@@ -3,11 +3,18 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
     alias(libs.plugins.ktlint)
+    alias(libs.plugins.detekt)
 }
 
 ktlint {
     android.set(true)
     baseline.set(file("ktlint-baseline.xml"))
+}
+
+detekt {
+    buildUponDefaultConfig = true
+    allRules = false
+    baseline = file("detekt-baseline.xml")
 }
 
 android {
