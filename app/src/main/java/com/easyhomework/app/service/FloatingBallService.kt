@@ -120,6 +120,7 @@ class FloatingBallService : Service() {
         removeFloatingBall()
         removeRegionSelector()
         removeAnswerPanel()
+        ScreenCaptureService.stop(this)
         preferencesManager.isFloatingBallEnabled = false
         super.onDestroy()
     }

@@ -42,7 +42,7 @@ class ScreenCaptureService : Service() {
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
             super.onStop()
-            cleanupProjection()
+            cleanupProjection(stopProjection = false)
         }
     }
 
@@ -74,6 +74,13 @@ class ScreenCaptureService : Service() {
                 putExtra("resultData", data)
             }
             context.startForegroundService(intent)
+        }
+
+        fun stop(context: Context) {
+            pendingCapture = false
+            lastScreenshot = null
+            val intent = Intent(context, ScreenCaptureService::class.java)
+            context.stopService(intent)
         }
     }
 
@@ -130,25 +137,35 @@ class ScreenCaptureService : Service() {
                 }
             }
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
+        handler?.removeCallbacksAndMessages(null)
         cleanupProjection()
+        handler = null
         instance = null
         super.onDestroy()
     }
 
     private fun setupImageReader() {
-        imageReader = ImageReader.newInstance(
-            screenWidth, screenHeight, PixelFormat.RGBA_8888, 2,
+        val reader = ImageReader.newInstance(
+            screenWidth,
+            screenHeight,
+            PixelFormat.RGBA_8888,
+            2,
         )
+        imageReader = reader
 
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "EasyHomeworkCapture",
-            screenWidth, screenHeight, screenDensity,
+            screenWidth,
+            screenHeight,
+            screenDensity,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader!!.surface, null, handler,
+            reader.surface,
+            null,
+            handler,
         )
     }
 
@@ -189,10 +206,12 @@ class ScreenCaptureService : Service() {
                     lastScreenshot = croppedBitmap
 
                     // Notify FloatingBallService
-                    val notifyIntent = Intent(this, FloatingBallService::class.java).apply {
-                        action = FloatingBallService.ACTION_SCREENSHOT_RESULT
+                    if (FloatingBallService.getInstance() != null) {
+                        val notifyIntent = Intent(this, FloatingBallService::class.java).apply {
+                            action = FloatingBallService.ACTION_SCREENSHOT_RESULT
+                        }
+                        startService(notifyIntent)
                     }
-                    startService(notifyIntent)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -202,13 +221,15 @@ class ScreenCaptureService : Service() {
         }, 100) // Small delay to ensure screen has rendered
     }
 
-    private fun cleanupProjection() {
+    private fun cleanupProjection(stopProjection: Boolean = true) {
         virtualDisplay?.release()
         virtualDisplay = null
         imageReader?.close()
         imageReader = null
         mediaProjection?.unregisterCallback(projectionCallback)
-        mediaProjection?.stop()
+        if (stopProjection) {
+            mediaProjection?.stop()
+        }
         mediaProjection = null
     }
 
