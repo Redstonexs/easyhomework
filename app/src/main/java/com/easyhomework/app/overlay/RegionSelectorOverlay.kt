@@ -14,10 +14,12 @@ import com.easyhomework.app.ocr.TextRecognitionManager
 import com.easyhomework.app.util.PreferencesManager
 import kotlin.math.max
 import kotlin.math.min
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -35,6 +37,7 @@ import kotlinx.coroutines.withContext
 class RegionSelectorOverlay(
     context: Context,
     private val screenshot: Bitmap,
+    private val allowAutoSubmit: Boolean = true,
 ) : FrameLayout(context) {
 
     /**
@@ -86,8 +89,10 @@ class RegionSelectorOverlay(
 
     private val smartDetector = SmartRegionDetector()
     private val preferencesManager = PreferencesManager(context)
+    private val isVisionModel = preferencesManager.getLLMConfig().supportsVisionInput()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var isLoading = true
+    private var isConfirming = false
 
     // Status text
     private val statusText: TextView
@@ -96,6 +101,12 @@ class RegionSelectorOverlay(
     private val handleRadius = 16f
     private val cornerLength = 40f
     private val touchSlop = 40f
+
+    private companion object {
+        const val AUTO_SUBMIT_CONFIDENCE = 0.82f
+        const val AUTO_SUBMIT_DELAY_MS = 450L
+        const val STATUS_HIDE_DELAY_MS = 1600L
+    }
 
     enum class Handle {
         NONE,
@@ -143,9 +154,6 @@ class RegionSelectorOverlay(
         }
 
         // Direct image button (for vision models)
-        val config = preferencesManager.getLLMConfig()
-        val isVisionModel = config.supportsVisionInput()
-
         val directImageBtn = if (isVisionModel) {
             createButton("直接识图", "#FF9800") {
                 confirmSelection(sendDirectImage = true)
@@ -190,9 +198,30 @@ class RegionSelectorOverlay(
                 }
                 selectionRect = RectF(result.suggestedRegion)
                 isLoading = false
-                statusText.visibility = View.GONE
-                buttonBar.visibility = View.VISIBLE
                 invalidate()
+
+                if (allowAutoSubmit && result.confidence >= AUTO_SUBMIT_CONFIDENCE) {
+                    statusText.text = if (isVisionModel) {
+                        "已自动框选，正在直接识图..."
+                    } else {
+                        "已自动框选，正在 OCR 搜题..."
+                    }
+                    statusText.visibility = View.VISIBLE
+                    buttonBar.visibility = View.GONE
+                    delay(AUTO_SUBMIT_DELAY_MS)
+                    if (isAttachedToWindow && !isConfirming) {
+                        confirmSelection(sendDirectImage = isVisionModel)
+                    }
+                } else {
+                    val message = if (allowAutoSubmit) {
+                        "已自动框选，请确认或手动调整"
+                    } else {
+                        "已自动框选，可手动调整后提交"
+                    }
+                    showManualControls(message)
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Fallback: select center region
                 selectionRect = RectF(
@@ -202,9 +231,7 @@ class RegionSelectorOverlay(
                     screenshot.height * 0.75f,
                 )
                 isLoading = false
-                statusText.text = "自动检测失败，请手动调整选区"
-                statusText.postDelayed({ statusText.visibility = View.GONE }, 2000)
-                buttonBar.visibility = View.VISIBLE
+                showManualControls("自动检测失败，请手动调整选区")
                 invalidate()
             }
         }
@@ -225,6 +252,18 @@ class RegionSelectorOverlay(
             elevation = 8f
             setOnClickListener { onClick() }
         }
+    }
+
+    @SuppressLint("SetTextI18n")
+    private fun showManualControls(message: String) {
+        statusText.text = message
+        statusText.visibility = View.VISIBLE
+        buttonBar.visibility = View.VISIBLE
+        statusText.postDelayed({
+            if (!isConfirming && !isLoading) {
+                statusText.visibility = View.GONE
+            }
+        }, STATUS_HIDE_DELAY_MS)
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -292,7 +331,7 @@ class RegionSelectorOverlay(
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (isLoading) return true
+        if (isLoading || isConfirming) return true
 
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
@@ -422,6 +461,9 @@ class RegionSelectorOverlay(
 
     @SuppressLint("SetTextI18n")
     private fun confirmSelection(sendDirectImage: Boolean) {
+        if (isConfirming) return
+        isConfirming = true
+
         scope.launch {
             if (sendDirectImage) {
                 // Direct image mode: skip OCR, send bitmap directly
@@ -430,25 +472,12 @@ class RegionSelectorOverlay(
                 buttonBar.visibility = View.GONE
 
                 try {
-                    val cropRect = Rect(
-                        max(0, selectionRect.left.toInt()),
-                        max(0, selectionRect.top.toInt()),
-                        min(screenshot.width, selectionRect.right.toInt()),
-                        min(screenshot.height, selectionRect.bottom.toInt()),
-                    )
-
-                    val croppedBitmap = Bitmap.createBitmap(
-                        screenshot,
-                        cropRect.left,
-                        cropRect.top,
-                        cropRect.width(),
-                        cropRect.height(),
-                    )
-
-                    android.os.Handler(android.os.Looper.getMainLooper()).post {
-                        onConfirm?.invoke(croppedBitmap, "", true)
-                    }
+                    val croppedBitmap = cropSelectedBitmap()
+                    onConfirm?.invoke(croppedBitmap, "", true)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
+                    isConfirming = false
                     statusText.text = "处理失败: ${e.message}"
                     statusText.postDelayed({
                         statusText.visibility = View.GONE
@@ -462,26 +491,16 @@ class RegionSelectorOverlay(
                 buttonBar.visibility = View.GONE
 
                 try {
-                    val cropRect = Rect(
-                        max(0, selectionRect.left.toInt()),
-                        max(0, selectionRect.top.toInt()),
-                        min(screenshot.width, selectionRect.right.toInt()),
-                        min(screenshot.height, selectionRect.bottom.toInt()),
-                    )
-
-                    val croppedBitmap = Bitmap.createBitmap(
-                        screenshot,
-                        cropRect.left,
-                        cropRect.top,
-                        cropRect.width(),
-                        cropRect.height(),
-                    )
-
+                    val croppedBitmap = cropSelectedBitmap()
                     val recognizer = TextRecognitionManager()
-                    val result = recognizer.recognizeText(croppedBitmap)
-                    recognizer.close()
+                    val result = try {
+                        recognizer.recognizeText(croppedBitmap)
+                    } finally {
+                        recognizer.close()
+                    }
 
                     if (result.text.isBlank()) {
+                        isConfirming = false
                         statusText.text = "未识别到文字，请重新选择区域"
                         statusText.postDelayed({
                             statusText.visibility = View.GONE
@@ -490,11 +509,10 @@ class RegionSelectorOverlay(
                     } else {
                         val bitmap = croppedBitmap
                         val text = result.text
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            onConfirm?.invoke(bitmap, text, false)
-                        }
+                        onConfirm?.invoke(bitmap, text, false)
                     }
                 } catch (e: Exception) {
+                    isConfirming = false
                     statusText.text = "识别失败: ${e.message}"
                     statusText.postDelayed({
                         statusText.visibility = View.GONE
@@ -503,6 +521,24 @@ class RegionSelectorOverlay(
                 }
             }
         }
+    }
+
+    private fun cropSelectedBitmap(): Bitmap {
+        val cropRect = Rect(
+            max(0, selectionRect.left.toInt()),
+            max(0, selectionRect.top.toInt()),
+            min(screenshot.width, selectionRect.right.toInt()),
+            min(screenshot.height, selectionRect.bottom.toInt()),
+        )
+        require(cropRect.width() > 0 && cropRect.height() > 0) { "选区无效" }
+
+        return Bitmap.createBitmap(
+            screenshot,
+            cropRect.left,
+            cropRect.top,
+            cropRect.width(),
+            cropRect.height(),
+        )
     }
 
     fun release() {

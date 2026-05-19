@@ -8,6 +8,7 @@ import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
@@ -42,6 +43,8 @@ class TextRecognitionManager {
             }
 
             text
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             RecognitionResult(
                 text = "",
@@ -65,21 +68,25 @@ class TextRecognitionManager {
 
                 val cleanedText = cleanOCRText(fullText)
 
-                continuation.resume(
-                    RecognitionResult(
-                        text = cleanedText,
-                        confidence = 1.0f,
-                        blocks = visionText.textBlocks.map { block ->
-                            TextBlock(
-                                text = block.text,
-                                boundingBox = block.boundingBox,
-                            )
-                        },
-                    ),
-                )
+                if (continuation.isActive) {
+                    continuation.resume(
+                        RecognitionResult(
+                            text = cleanedText,
+                            confidence = 1.0f,
+                            blocks = visionText.textBlocks.map { block ->
+                                TextBlock(
+                                    text = block.text,
+                                    boundingBox = block.boundingBox,
+                                )
+                            },
+                        ),
+                    )
+                }
             }
             .addOnFailureListener { e ->
-                continuation.resumeWithException(e)
+                if (continuation.isActive) {
+                    continuation.resumeWithException(e)
+                }
             }
     }
 

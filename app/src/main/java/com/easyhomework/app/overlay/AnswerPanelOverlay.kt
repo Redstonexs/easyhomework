@@ -52,6 +52,7 @@ class AnswerPanelOverlay(
 ) : FrameLayout(serviceContext) {
 
     var onClose: (() -> Unit)? = null
+    var onReselect: (() -> Unit)? = null
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val llmRepository = LLMRepository()
@@ -301,6 +302,29 @@ class AnswerPanelOverlay(
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         headerLayout.addView(titleText, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+
+        val reselectBtn = TextView(context).apply {
+            text = "重新框选"
+            setTextColor(primaryColor)
+            textSize = 13f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(dp(14f).toInt(), dp(8f).toInt(), dp(14f).toInt(), dp(8f).toInt())
+            val bg = GradientDrawable().apply {
+                setColor(surfaceContainerHighColor)
+                setStroke(dp(1f).toInt(), primaryColor)
+                cornerRadius = dp(18f)
+            }
+            background = bg
+            setOnClickListener { onReselect?.invoke() }
+        }
+        val reselectParams = LinearLayout.LayoutParams(
+            LayoutParams.WRAP_CONTENT,
+            LayoutParams.WRAP_CONTENT,
+        ).apply {
+            marginEnd = dp(8f).toInt()
+        }
+        headerLayout.addView(reselectBtn, reselectParams)
 
         val closeBtn = TextView(context).apply {
             text = "\u2715"

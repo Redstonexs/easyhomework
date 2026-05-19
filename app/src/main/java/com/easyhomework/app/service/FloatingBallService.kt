@@ -44,6 +44,7 @@ class FloatingBallService : Service() {
     private var floatingBallView: FloatingBallView? = null
     private var regionSelector: RegionSelectorOverlay? = null
     private var answerPanel: AnswerPanelOverlay? = null
+    private var lastRegionScreenshot: Bitmap? = null
 
     private var ballParams: WindowManager.LayoutParams? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -120,6 +121,7 @@ class FloatingBallService : Service() {
         removeFloatingBall()
         removeRegionSelector()
         removeAnswerPanel()
+        lastRegionScreenshot = null
         ScreenCaptureService.stop(this)
         preferencesManager.isFloatingBallEnabled = false
         super.onDestroy()
@@ -318,16 +320,18 @@ class FloatingBallService : Service() {
 
     // ---- Region Selector ----
 
-    fun showRegionSelector(screenshot: Bitmap) {
+    fun showRegionSelector(screenshot: Bitmap, allowAutoSubmit: Boolean = true) {
         removeRegionSelector()
+        lastRegionScreenshot = screenshot
 
-        regionSelector = RegionSelectorOverlay(this, screenshot).apply {
+        regionSelector = RegionSelectorOverlay(this, screenshot, allowAutoSubmit).apply {
             onConfirm = { croppedBitmap, recognizedText, sendDirectImage ->
                 removeRegionSelector()
                 showAnswerPanel(croppedBitmap, recognizedText, sendDirectImage)
             }
             onCancel = {
                 removeRegionSelector()
+                lastRegionScreenshot = null
                 showFloatingBallAgain()
             }
         }
@@ -363,7 +367,17 @@ class FloatingBallService : Service() {
             answerPanel = AnswerPanelOverlay(this, screenshot, recognizedText, sendDirectImage).apply {
                 onClose = {
                     removeAnswerPanel()
+                    lastRegionScreenshot = null
                     showFloatingBallAgain()
+                }
+                onReselect = {
+                    val sourceScreenshot = lastRegionScreenshot
+                    removeAnswerPanel()
+                    if (sourceScreenshot != null) {
+                        showRegionSelector(sourceScreenshot, allowAutoSubmit = false)
+                    } else {
+                        showFloatingBallAgain()
+                    }
                 }
             }
 

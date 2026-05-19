@@ -9,6 +9,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.max
 import kotlin.math.min
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
@@ -21,6 +22,108 @@ class SmartRegionDetector {
         ChineseTextRecognizerOptions.Builder().build(),
     )
 
+    private companion object {
+        const val NO_TEXT_CONFIDENCE = 0.25f
+        const val WEAK_TEXT_CONFIDENCE = 0.4f
+        const val MIN_REGION_HEIGHT_RATIO = 0.045f
+        const val MAX_REGION_HEIGHT_RATIO = 0.82f
+        const val MAX_LOOSE_GAP_RATIO = 0.09f
+        const val RELAXED_CUE_GAP_RATIO = 0.16f
+        const val STATUS_BAR_BOTTOM_RATIO = 0.055f
+        const val NAV_BAR_TOP_RATIO = 0.94f
+        const val MIN_BLOCK_HEIGHT_PX = 8
+        const val MIN_BLOCK_HEIGHT_RATIO = 0.006f
+        const val MIN_BLOCK_WIDTH_RATIO = 0.018f
+        const val MIN_MEANINGFUL_CHARS = 2
+        const val MIN_LINE_COUNT = 1
+        const val SMALL_BLOCK_COUNT = 2
+        const val MIN_WINDOW_CHARS = 6
+        const val DENSE_MIN_WINDOW_CHARS = 14
+        const val MIN_WINDOW_WIDTH_RATIO = 0.18f
+        const val COMPACTNESS_GAP_RATIO = 0.07f
+        const val IDEAL_MIN_HEIGHT_RATIO = 0.08f
+        const val IDEAL_MAX_HEIGHT_RATIO = 0.58f
+        const val IDEAL_MIN_WIDTH_RATIO = 0.32f
+        const val OK_MIN_HEIGHT_RATIO = 0.05f
+        const val OK_MAX_HEIGHT_RATIO = 0.70f
+        const val OK_MIN_WIDTH_RATIO = 0.24f
+        const val HIGH_AREA_RATIO = 0.65f
+        const val MEDIUM_AREA_RATIO = 0.52f
+        const val SIZE_SCORE_IDEAL = 1f
+        const val SIZE_SCORE_OK = 0.65f
+        const val SIZE_SCORE_WEAK = 0.25f
+        const val AREA_PENALTY_HIGH = 1f
+        const val AREA_PENALTY_MEDIUM = 0.45f
+        const val NO_PENALTY = 0f
+        const val SINGLE_BLOCK_PENALTY = 18.0
+        const val MAX_SCORE_CHARS = 140
+        const val MAX_SCORE_LINES = 12
+        const val CHAR_SCORE_WEIGHT = 1.4
+        const val LINE_SCORE_WEIGHT = 11.0
+        const val QUESTION_CUE_SCORE_WEIGHT = 24.0
+        const val OPTION_SCORE_WEIGHT = 18.0
+        const val DENSITY_SCORE_WEIGHT = 90.0
+        const val COMPACTNESS_SCORE_WEIGHT = 28.0
+        const val SIZE_SCORE_WEIGHT = 26.0
+        const val AREA_PENALTY_WEIGHT = 44.0
+        const val BASE_CONFIDENCE = 0.34f
+        const val CONFIDENCE_CHAR_DIVISOR = 90f
+        const val CONFIDENCE_CHAR_MAX = 0.18f
+        const val CONFIDENCE_LINE_DIVISOR = 7f
+        const val CONFIDENCE_LINE_MAX = 0.12f
+        const val CONFIDENCE_COMPACTNESS_WEIGHT = 0.14f
+        const val CONFIDENCE_QUESTION_CUE = 0.16f
+        const val CONFIDENCE_MULTI_OPTION = 0.1f
+        const val CONFIDENCE_SINGLE_OPTION = 0.04f
+        const val CONFIDENCE_COVERAGE_RATIO = 0.45f
+        const val CONFIDENCE_COVERAGE = 0.06f
+        const val CONFIDENCE_MIN_HEIGHT_RATIO = 0.06f
+        const val CONFIDENCE_MAX_HEIGHT_RATIO = 0.62f
+        const val CONFIDENCE_MIN_WIDTH_RATIO = 0.3f
+        const val CONFIDENCE_SHAPE = 0.11f
+        const val CONFIDENCE_MULTI_BLOCK = 0.05f
+        const val CONFIDENCE_AREA_PENALTY = 0.16f
+        const val CONFIDENCE_SINGLE_BLOCK_PENALTY = 0.12f
+        const val MAX_CONFIDENCE = 0.95f
+        const val PADDING_H_RATIO = 0.06f
+        const val MIN_PADDING_H_RATIO = 0.025f
+        const val PADDING_TOP_RATIO = 0.1f
+        const val MIN_PADDING_TOP_RATIO = 0.012f
+        const val PADDING_BOTTOM_RATIO = 0.14f
+        const val MIN_PADDING_BOTTOM_RATIO = 0.018f
+        const val DEFAULT_LEFT_DIVISOR = 12
+        const val DEFAULT_TOP_DIVISOR = 8
+        const val DEFAULT_RIGHT_MULTIPLIER = 11
+        const val DEFAULT_BOTTOM_MULTIPLIER = 4
+        const val DEFAULT_BOTTOM_DIVISOR = 5
+        const val SHORT_UI_CHAR_COUNT = 4
+        const val TOP_UI_RATIO = 0.12f
+        const val BOTTOM_UI_RATIO = 0.9f
+
+        val OPTION_PREFIX_REGEX = Regex("""^\s*([A-Ha-h][\.．、)]|[①②③④⑤⑥⑦⑧]|[一二三四五六七八][、.．])""")
+        val QUESTION_SYMBOL_REGEX = Regex("""[？?]|_{2,}|（\s*）|\(\s*\)|[=≥≤≈]|√|∠|△|[+\-×÷*/]""")
+        val CLOCK_REGEX = Regex("""^\d{1,2}:\d{2}$""")
+        val QUESTION_KEYWORDS = listOf(
+            "题",
+            "下列",
+            "正确",
+            "错误",
+            "选择",
+            "计算",
+            "证明",
+            "解答",
+            "求",
+            "若",
+            "已知",
+            "填空",
+            "判断",
+            "答案",
+            "多少",
+            "哪",
+            "为什么",
+        )
+    }
+
     /**
      * Analyze a screenshot bitmap and return the suggested crop region.
      */
@@ -30,16 +133,14 @@ class SmartRegionDetector {
             val blocks = detectTextBlocks(inputImage)
 
             if (blocks.isEmpty()) {
-                // No text found, return center region as default
-                val defaultRect = Rect(
-                    bitmap.width / 8,
-                    bitmap.height / 6,
-                    bitmap.width * 7 / 8,
-                    bitmap.height * 5 / 6,
-                )
                 return DetectionResult(
-                    suggestedRegion = defaultRect,
-                    confidence = 0.3f,
+                    suggestedRegion = Rect(
+                        bitmap.width / DEFAULT_LEFT_DIVISOR,
+                        bitmap.height / DEFAULT_TOP_DIVISOR,
+                        bitmap.width * DEFAULT_RIGHT_MULTIPLIER / DEFAULT_LEFT_DIVISOR,
+                        bitmap.height * DEFAULT_BOTTOM_MULTIPLIER / DEFAULT_BOTTOM_DIVISOR,
+                    ),
+                    confidence = NO_TEXT_CONFIDENCE,
                     allTextBlocks = emptyList(),
                 )
             }
@@ -49,30 +150,30 @@ class SmartRegionDetector {
 
             if (contentBlocks.isEmpty()) {
                 return DetectionResult(
-                    suggestedRegion = mergeAllBlocks(blocks, bitmap.width, bitmap.height),
-                    confidence = 0.4f,
+                    suggestedRegion = mergeBlocks(blocks, bitmap.width, bitmap.height),
+                    confidence = WEAK_TEXT_CONFIDENCE,
                     allTextBlocks = blocks,
                 )
             }
 
-            // Find the densest text cluster (likely the question area)
-            val questionRegion = findDensestCluster(contentBlocks, bitmap.width, bitmap.height)
+            val questionCandidate = findBestQuestionCandidate(contentBlocks, bitmap.width, bitmap.height)
 
             DetectionResult(
-                suggestedRegion = questionRegion,
-                confidence = 0.75f,
+                suggestedRegion = questionCandidate.rect,
+                confidence = questionCandidate.confidence,
                 allTextBlocks = blocks,
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            // Fallback to center region
             DetectionResult(
                 suggestedRegion = Rect(
-                    bitmap.width / 8,
-                    bitmap.height / 6,
-                    bitmap.width * 7 / 8,
-                    bitmap.height * 5 / 6,
+                    bitmap.width / DEFAULT_LEFT_DIVISOR,
+                    bitmap.height / DEFAULT_TOP_DIVISOR,
+                    bitmap.width * DEFAULT_RIGHT_MULTIPLIER / DEFAULT_LEFT_DIVISOR,
+                    bitmap.height * DEFAULT_BOTTOM_MULTIPLIER / DEFAULT_BOTTOM_DIVISOR,
                 ),
-                confidence = 0.2f,
+                confidence = NO_TEXT_CONFIDENCE,
                 allTextBlocks = emptyList(),
             )
         }
@@ -85,86 +186,169 @@ class SmartRegionDetector {
             .addOnSuccessListener { visionText ->
                 val blocks = visionText.textBlocks.mapNotNull { block ->
                     block.boundingBox?.let { rect ->
-                        TextBlockInfo(
-                            text = block.text,
-                            rect = rect,
-                            lineCount = block.lines.size,
-                        )
+                        val text = block.text.trim()
+                        if (text.isEmpty()) {
+                            null
+                        } else {
+                            TextBlockInfo(
+                                text = text,
+                                rect = rect,
+                                lineCount = max(MIN_LINE_COUNT, block.lines.size),
+                            )
+                        }
                     }
                 }
-                continuation.resume(blocks)
+                if (continuation.isActive) {
+                    continuation.resume(blocks)
+                }
             }
             .addOnFailureListener { e ->
-                continuation.resumeWithException(e)
+                if (continuation.isActive) {
+                    continuation.resumeWithException(e)
+                }
             }
     }
 
     /**
      * Filter out blocks that are likely UI elements (status bar, navigation, toolbars).
      */
-    @Suppress("UNUSED_PARAMETER")
     private fun filterContentBlocks(
         blocks: List<TextBlockInfo>,
         imageWidth: Int,
         imageHeight: Int,
     ): List<TextBlockInfo> {
-        val statusBarHeight = imageHeight * 0.05 // Top 5% is likely status bar
-        val navBarHeight = imageHeight * 0.08 // Bottom 8% is likely nav bar
-        val minBlockHeight = imageHeight * 0.01 // Too small blocks are UI elements
+        val statusBarBottom = imageHeight * STATUS_BAR_BOTTOM_RATIO
+        val navBarTop = imageHeight * NAV_BAR_TOP_RATIO
+        val minBlockHeight = max(MIN_BLOCK_HEIGHT_PX, (imageHeight * MIN_BLOCK_HEIGHT_RATIO).toInt())
+        val minBlockWidth = max(MIN_BLOCK_HEIGHT_PX, (imageWidth * MIN_BLOCK_WIDTH_RATIO).toInt())
 
         return blocks.filter { block ->
             val rect = block.rect
-            // Not in status bar area
-            rect.top > statusBarHeight &&
-                // Not in navigation bar area
-                rect.bottom < (imageHeight - navBarHeight) &&
-                // Not too small (likely UI labels)
-                (rect.height()) > minBlockHeight &&
-                // Has meaningful text content
-                block.text.length > 2
+            val hasMeaningfulText =
+                block.charCount >= MIN_MEANINGFUL_CHARS ||
+                    block.hasQuestionSignal ||
+                    block.isOptionLike
+            val isShortUiText = block.charCount <= SHORT_UI_CHAR_COUNT && !block.hasQuestionSignal
+            val isTopUi = rect.top < imageHeight * TOP_UI_RATIO && isShortUiText
+            val isBottomUi = rect.bottom > imageHeight * BOTTOM_UI_RATIO && isShortUiText
+            val isClock = CLOCK_REGEX.matches(block.text.trim())
+
+            rect.bottom > statusBarBottom &&
+                rect.top < navBarTop &&
+                rect.height() >= minBlockHeight &&
+                rect.width() >= minBlockWidth &&
+                hasMeaningfulText &&
+                !isTopUi &&
+                !isBottomUi &&
+                !isClock
         }
     }
 
     /**
-     * Find the densest cluster of text blocks, which is likely the question content.
+     * Find the best contiguous text cluster by combining text density, question cues,
+     * option labels, compactness, and plausible crop size.
      */
-    private fun findDensestCluster(
+    private fun findBestQuestionCandidate(
         blocks: List<TextBlockInfo>,
         imageWidth: Int,
         imageHeight: Int,
-    ): Rect {
-        if (blocks.size <= 2) {
-            return mergeAllBlocks(blocks, imageWidth, imageHeight)
+    ): QuestionCandidate {
+        if (blocks.size <= SMALL_BLOCK_COUNT) {
+            return buildCandidate(blocks, blocks.sumOf { it.charCount }, imageWidth, imageHeight)
         }
 
-        // Sort blocks by vertical position
-        val sortedBlocks = blocks.sortedBy { it.rect.top }
+        val sortedBlocks = blocks.sortedWith(
+            compareBy<TextBlockInfo> { it.rect.top }.thenBy { it.rect.left },
+        )
+        val totalCharCount = sortedBlocks.sumOf { it.charCount }.coerceAtLeast(1)
+        val bestCandidate = buildCandidate(sortedBlocks, totalCharCount, imageWidth, imageHeight)
 
-        // Use sliding window to find the densest group
-        var bestScore = 0.0
-        var bestStart = 0
-        var bestEnd = blocks.size - 1
-        val windowSize = max(2, blocks.size * 2 / 3) // Use 2/3 of blocks as window
-
-        for (i in 0..sortedBlocks.size - windowSize) {
-            val windowBlocks = sortedBlocks.subList(i, i + windowSize)
-            val totalTextLength = windowBlocks.sumOf { it.text.length }
-            val verticalSpan = windowBlocks.last().rect.bottom - windowBlocks.first().rect.top
-            val density = if (verticalSpan > 0) totalTextLength.toDouble() / verticalSpan else 0.0
-
-            // Favor regions with more text and more lines
-            val lineCount = windowBlocks.sumOf { it.lineCount }
-            val score = density * lineCount
-
-            if (score > bestScore) {
-                bestScore = score
-                bestStart = i
-                bestEnd = i + windowSize - 1
+        return sortedBlocks.indices.asSequence()
+            .flatMap { start ->
+                (start until sortedBlocks.size).asSequence()
+                    .map { end -> sortedBlocks.subList(start, end + 1) }
+                    .map { windowBlocks ->
+                        TextWindow(windowBlocks, mergeBlocksWithoutPadding(windowBlocks))
+                    }
+                    .takeWhile { window ->
+                        window.rect.height().toFloat() / imageHeight <= MAX_REGION_HEIGHT_RATIO
+                    }
+                    .filter { window ->
+                        isPlausibleWindow(window.blocks, window.rect, imageWidth, imageHeight)
+                    }
+                    .map { window ->
+                        buildCandidate(window.blocks, totalCharCount, imageWidth, imageHeight)
+                    }
             }
-        }
+            .fold(bestCandidate) { best, candidate ->
+                if (candidate.score > best.score) candidate else best
+            }
+    }
 
-        val selectedBlocks = sortedBlocks.subList(bestStart, bestEnd + 1)
-        return mergeBlocks(selectedBlocks, imageWidth, imageHeight)
+    private fun isPlausibleWindow(
+        blocks: List<TextBlockInfo>,
+        rect: Rect,
+        imageWidth: Int,
+        imageHeight: Int,
+    ): Boolean {
+        val charCount = blocks.sumOf { it.charCount }
+        val heightRatio = rect.height().toFloat() / imageHeight
+        val widthRatio = rect.width().toFloat() / imageWidth
+        val hasQuestionCue = blocks.any { it.hasQuestionSignal || it.isOptionLike }
+        val gapStats = verticalGapStats(blocks)
+
+        return charCount >= MIN_WINDOW_CHARS &&
+            (heightRatio >= MIN_REGION_HEIGHT_RATIO || charCount >= DENSE_MIN_WINDOW_CHARS) &&
+            (widthRatio >= MIN_WINDOW_WIDTH_RATIO || hasQuestionCue) &&
+            (
+                blocks.size == MIN_LINE_COUNT ||
+                    gapStats.maxGap <= imageHeight * MAX_LOOSE_GAP_RATIO ||
+                    (hasQuestionCue && gapStats.maxGap <= imageHeight * RELAXED_CUE_GAP_RATIO)
+                )
+    }
+
+    private fun buildCandidate(
+        blocks: List<TextBlockInfo>,
+        totalCharCount: Int,
+        imageWidth: Int,
+        imageHeight: Int,
+    ): QuestionCandidate {
+        val tightRect = mergeBlocksWithoutPadding(blocks)
+        val paddedRect = mergeBlocks(blocks, imageWidth, imageHeight)
+        val charCount = blocks.sumOf { it.charCount }
+        val lineCount = blocks.sumOf { it.lineCount }
+        val questionCueCount = blocks.count { it.hasQuestionSignal }
+        val optionCount = blocks.count { it.isOptionLike }
+        val heightRatio = tightRect.height().toFloat() / imageHeight
+        val widthRatio = tightRect.width().toFloat() / imageWidth
+        val areaRatio = tightRect.width().toFloat() *
+            tightRect.height().toFloat() /
+            imageWidth /
+            imageHeight
+        val density = charCount.toDouble() / max(MIN_LINE_COUNT, tightRect.height())
+        val gapStats = verticalGapStats(blocks)
+        val compactness = SIZE_SCORE_IDEAL -
+            (gapStats.averageGap / (imageHeight * COMPACTNESS_GAP_RATIO))
+                .coerceIn(NO_PENALTY, SIZE_SCORE_IDEAL)
+        val metrics = CandidateMetrics(
+            charCount = charCount,
+            lineCount = lineCount,
+            blockCount = blocks.size,
+            questionCueCount = questionCueCount,
+            optionCount = optionCount,
+            coverage = charCount.toFloat() / totalCharCount,
+            density = density,
+            compactness = compactness,
+            heightRatio = heightRatio,
+            widthRatio = widthRatio,
+            areaRatio = areaRatio,
+        )
+
+        return QuestionCandidate(
+            rect = paddedRect,
+            score = metrics.score(),
+            confidence = metrics.confidence(),
+        )
     }
 
     /**
@@ -175,6 +359,21 @@ class SmartRegionDetector {
         imageWidth: Int,
         imageHeight: Int,
     ): Rect {
+        val rect = mergeBlocksWithoutPadding(blocks)
+
+        val paddingH = max(rect.width() * PADDING_H_RATIO, imageWidth * MIN_PADDING_H_RATIO)
+        val paddingTop = max(rect.height() * PADDING_TOP_RATIO, imageHeight * MIN_PADDING_TOP_RATIO)
+        val paddingBottom = max(rect.height() * PADDING_BOTTOM_RATIO, imageHeight * MIN_PADDING_BOTTOM_RATIO)
+
+        return Rect(
+            max(0, (rect.left - paddingH).toInt()),
+            max(0, (rect.top - paddingTop).toInt()),
+            min(imageWidth, (rect.right + paddingH).toInt()),
+            min(imageHeight, (rect.bottom + paddingBottom).toInt()),
+        )
+    }
+
+    private fun mergeBlocksWithoutPadding(blocks: List<TextBlockInfo>): Rect {
         var left = Int.MAX_VALUE
         var top = Int.MAX_VALUE
         var right = 0
@@ -187,32 +386,21 @@ class SmartRegionDetector {
             bottom = max(bottom, block.rect.bottom)
         }
 
-        // Add padding
-        val paddingH = (right - left) * 0.05f
-        val paddingV = (bottom - top) * 0.08f
-
-        return Rect(
-            max(0, (left - paddingH).toInt()),
-            max(0, (top - paddingV).toInt()),
-            min(imageWidth, (right + paddingH).toInt()),
-            min(imageHeight, (bottom + paddingV).toInt()),
-        )
+        return Rect(left, top, right, bottom)
     }
 
-    private fun mergeAllBlocks(
-        blocks: List<TextBlockInfo>,
-        imageWidth: Int,
-        imageHeight: Int,
-    ): Rect {
-        if (blocks.isEmpty()) {
-            return Rect(
-                imageWidth / 8,
-                imageHeight / 6,
-                imageWidth * 7 / 8,
-                imageHeight * 5 / 6,
-            )
+    private fun verticalGapStats(blocks: List<TextBlockInfo>): GapStats {
+        if (blocks.size < SMALL_BLOCK_COUNT) {
+            return GapStats(maxGap = 0, averageGap = NO_PENALTY)
         }
-        return mergeBlocks(blocks, imageWidth, imageHeight)
+        val gaps = blocks.sortedBy { it.rect.top }
+            .zipWithNext { first, second ->
+                (second.rect.top - first.rect.bottom).coerceAtLeast(0)
+            }
+        return GapStats(
+            maxGap = gaps.maxOrNull() ?: 0,
+            averageGap = gaps.average().toFloat(),
+        )
     }
 
     fun close() {
@@ -223,6 +411,103 @@ class SmartRegionDetector {
         val text: String,
         val rect: Rect,
         val lineCount: Int,
+    ) {
+        val charCount: Int = text.count { !it.isWhitespace() }
+        val isOptionLike: Boolean = OPTION_PREFIX_REGEX.containsMatchIn(text)
+        val hasQuestionSignal: Boolean =
+            isOptionLike ||
+                QUESTION_SYMBOL_REGEX.containsMatchIn(text) ||
+                QUESTION_KEYWORDS.any { keyword -> text.contains(keyword) }
+    }
+
+    private data class CandidateMetrics(
+        val charCount: Int,
+        val lineCount: Int,
+        val blockCount: Int,
+        val questionCueCount: Int,
+        val optionCount: Int,
+        val coverage: Float,
+        val density: Double,
+        val compactness: Float,
+        val heightRatio: Float,
+        val widthRatio: Float,
+        val areaRatio: Float,
+    ) {
+        fun score(): Double {
+            val sizeScore = when {
+                heightRatio in IDEAL_MIN_HEIGHT_RATIO..IDEAL_MAX_HEIGHT_RATIO &&
+                    widthRatio >= IDEAL_MIN_WIDTH_RATIO -> SIZE_SCORE_IDEAL
+                heightRatio in OK_MIN_HEIGHT_RATIO..OK_MAX_HEIGHT_RATIO &&
+                    widthRatio >= OK_MIN_WIDTH_RATIO -> SIZE_SCORE_OK
+                else -> SIZE_SCORE_WEAK
+            }
+            val areaPenalty = when {
+                areaRatio > HIGH_AREA_RATIO -> AREA_PENALTY_HIGH
+                areaRatio > MEDIUM_AREA_RATIO -> AREA_PENALTY_MEDIUM
+                else -> NO_PENALTY
+            }
+            val singleBlockPenalty = if (
+                blockCount == MIN_LINE_COUNT &&
+                questionCueCount == NO_PENALTY.toInt()
+            ) {
+                SINGLE_BLOCK_PENALTY
+            } else {
+                NO_PENALTY.toDouble()
+            }
+
+            return min(charCount, MAX_SCORE_CHARS) * CHAR_SCORE_WEIGHT +
+                min(lineCount, MAX_SCORE_LINES) * LINE_SCORE_WEIGHT +
+                questionCueCount * QUESTION_CUE_SCORE_WEIGHT +
+                optionCount * OPTION_SCORE_WEIGHT +
+                density * DENSITY_SCORE_WEIGHT +
+                compactness * COMPACTNESS_SCORE_WEIGHT +
+                sizeScore * SIZE_SCORE_WEIGHT -
+                areaPenalty * AREA_PENALTY_WEIGHT -
+                singleBlockPenalty
+        }
+
+        fun confidence(): Float {
+            var confidence = BASE_CONFIDENCE
+            confidence += (charCount / CONFIDENCE_CHAR_DIVISOR).coerceAtMost(CONFIDENCE_CHAR_MAX)
+            confidence += (lineCount / CONFIDENCE_LINE_DIVISOR).coerceAtMost(CONFIDENCE_LINE_MAX)
+            confidence += compactness * CONFIDENCE_COMPACTNESS_WEIGHT
+            if (questionCueCount > NO_PENALTY.toInt()) confidence += CONFIDENCE_QUESTION_CUE
+            if (optionCount >= MIN_MEANINGFUL_CHARS) {
+                confidence += CONFIDENCE_MULTI_OPTION
+            } else if (optionCount == MIN_LINE_COUNT) {
+                confidence += CONFIDENCE_SINGLE_OPTION
+            }
+            if (coverage >= CONFIDENCE_COVERAGE_RATIO) confidence += CONFIDENCE_COVERAGE
+            if (
+                heightRatio in CONFIDENCE_MIN_HEIGHT_RATIO..CONFIDENCE_MAX_HEIGHT_RATIO &&
+                widthRatio >= CONFIDENCE_MIN_WIDTH_RATIO
+            ) {
+                confidence += CONFIDENCE_SHAPE
+            }
+            if (blockCount >= SMALL_BLOCK_COUNT) confidence += CONFIDENCE_MULTI_BLOCK
+            if (areaRatio > HIGH_AREA_RATIO) confidence -= CONFIDENCE_AREA_PENALTY
+            if (blockCount == MIN_LINE_COUNT && questionCueCount == NO_PENALTY.toInt()) {
+                confidence -= CONFIDENCE_SINGLE_BLOCK_PENALTY
+            }
+
+            return confidence.coerceIn(NO_TEXT_CONFIDENCE, MAX_CONFIDENCE)
+        }
+    }
+
+    private data class GapStats(
+        val maxGap: Int,
+        val averageGap: Float,
+    )
+
+    private data class TextWindow(
+        val blocks: List<TextBlockInfo>,
+        val rect: Rect,
+    )
+
+    private data class QuestionCandidate(
+        val rect: Rect,
+        val score: Double,
+        val confidence: Float,
     )
 
     data class DetectionResult(
