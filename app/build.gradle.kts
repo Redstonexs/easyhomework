@@ -111,7 +111,12 @@ dependencies {
 
     // Markdown rendering
     implementation(libs.markwon.core)
+    implementation(libs.markwon.ext.strikethrough)
+    implementation(libs.markwon.ext.latex)
+    implementation(libs.markwon.ext.tables)
+    implementation(libs.markwon.ext.tasklist)
     implementation(libs.markwon.html)
+    implementation(libs.markwon.linkify)
 
     // Local JavaScript execution for LLM math tools
     implementation(libs.quickjs.android)

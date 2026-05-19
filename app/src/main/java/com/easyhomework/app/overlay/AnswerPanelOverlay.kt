@@ -5,17 +5,36 @@ import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.graphics.*
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.text.method.ScrollingMovementMethod
-import android.view.*
+import android.text.Layout
+import android.text.method.LinkMovementMethod
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.VelocityTracker
+import android.view.View
+import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.widget.*
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.FrameLayout.LayoutParams
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
 import com.easyhomework.app.data.AppDatabase
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.LLMConfig
@@ -26,9 +45,22 @@ import com.easyhomework.app.tools.ToolExecutor
 import com.easyhomework.app.tools.ToolRegistry
 import com.easyhomework.app.util.PreferencesManager
 import io.noties.markwon.Markwon
+import io.noties.markwon.ext.latex.JLatexMathPlugin
+import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
+import io.noties.markwon.ext.tables.TablePlugin
+import io.noties.markwon.ext.tasklist.TaskListPlugin
+import io.noties.markwon.html.HtmlPlugin
+import io.noties.markwon.linkify.LinkifyPlugin
 import kotlin.math.abs
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Bottom sheet-style overlay panel that displays LLM answers.
@@ -58,15 +90,7 @@ class AnswerPanelOverlay(
     private val llmRepository = LLMRepository()
     private val toolExecutor = ToolExecutor()
     private val preferencesManager = PreferencesManager(serviceContext)
-    private val markwon: Markwon = try {
-        Markwon.create(serviceContext)
-    } catch (e: Exception) {
-        try {
-            Markwon.builder(serviceContext).build()
-        } catch (e2: Exception) {
-            Markwon.builder(serviceContext).build()
-        }
-    }
+    private val markwon: Markwon by lazy { createMarkwon() }
     private val handler = Handler(Looper.getMainLooper())
     private val database by lazy { AppDatabase.getDatabase(serviceContext) }
 
@@ -83,6 +107,9 @@ class AnswerPanelOverlay(
         const val TIMELINE_RAIL_WIDTH_DP = 22f
         const val TAG_ASSISTANT_TIMELINE = "assistant_timeline"
         const val TAG_TIMELINE_ITEM = "timeline_item"
+        const val INLINE_MATH_DELIMITER = "\$"
+        const val BLOCK_MATH_DELIMITER = "\$\$"
+        const val STREAM_CURSOR = "▎"
     }
 
     // Views
@@ -1155,13 +1182,114 @@ class AnswerPanelOverlay(
             textSize = if (tone == TimelineTone.ANSWER) 14f else 12f
             setLineSpacing(dp(3f), 1f)
             setPadding(0, dp(8f).toInt(), 0, 0)
-            movementMethod = ScrollingMovementMethod.getInstance()
+            setLinkTextColor(tertiaryColor)
+            highlightColor = primaryColor.copy(alpha = 64)
+            movementMethod = LinkMovementMethod.getInstance()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                breakStrategy = Layout.BREAK_STRATEGY_HIGH_QUALITY
+                hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NORMAL
+            }
             if (tone == TimelineTone.ANSWER && content.isNotBlank()) {
-                markwon.setMarkdown(this, content)
+                renderMarkdown(this, content)
             } else {
                 text = content
             }
         }
+    }
+
+    private fun createMarkwon(): Markwon {
+        return Markwon.builder(serviceContext)
+            .usePlugin(HtmlPlugin.create())
+            .usePlugin(StrikethroughPlugin.create())
+            .usePlugin(TablePlugin.create(serviceContext))
+            .usePlugin(TaskListPlugin.create(serviceContext))
+            .usePlugin(LinkifyPlugin.create())
+            .usePlugin(
+                JLatexMathPlugin.create(sp(14f)) { builder ->
+                    builder.inlinesEnabled(true)
+                },
+            )
+            .build()
+    }
+
+    private fun renderMarkdown(textView: TextView, markdown: String, showCursor: Boolean = false) {
+        val preparedMarkdown = prepareMarkdownForDisplay(markdown, showCursor)
+        if (preparedMarkdown.isBlank()) {
+            textView.text = if (showCursor) STREAM_CURSOR else ""
+        } else {
+            markwon.setMarkdown(textView, preparedMarkdown)
+        }
+    }
+
+    private fun prepareMarkdownForDisplay(markdown: String, showCursor: Boolean): String {
+        val normalized = normalizeMarkdown(markdown).trimEnd()
+        val closedMarkdown = closeUnmatchedMarkdownBlocks(normalized)
+        return if (showCursor && closedMarkdown.isNotBlank()) {
+            "$closedMarkdown\n\n$STREAM_CURSOR"
+        } else {
+            closedMarkdown
+        }
+    }
+
+    private fun normalizeMarkdown(markdown: String): String {
+        val normalizedLineEndings = markdown.replace("\r\n", "\n")
+        val builder = StringBuilder()
+        var openFence: String? = null
+        normalizedLineEndings.lineSequence().forEachIndexed { index, line ->
+            if (index > 0) builder.append('\n')
+            val fence = markdownFenceDelimiter(line)
+            val displayLine = if (openFence == null) normalizeMathDelimiters(line) else line
+            builder.append(displayLine)
+            if (fence != null) {
+                openFence = if (openFence == fence) null else openFence ?: fence
+            }
+        }
+        return builder.toString()
+    }
+
+    private fun normalizeMathDelimiters(line: String): String {
+        return line
+            .replace("\\[", "\n$BLOCK_MATH_DELIMITER\n")
+            .replace("\\]", "\n$BLOCK_MATH_DELIMITER\n")
+            .replace("\\(", INLINE_MATH_DELIMITER)
+            .replace("\\)", INLINE_MATH_DELIMITER)
+    }
+
+    private fun closeUnmatchedMarkdownBlocks(markdown: String): String {
+        val withClosedFence = findUnclosedFence(markdown)?.let { fence ->
+            "$markdown\n$fence"
+        } ?: markdown
+        return if (hasUnclosedBlockMath(withClosedFence)) {
+            "$withClosedFence\n$BLOCK_MATH_DELIMITER"
+        } else {
+            withClosedFence
+        }
+    }
+
+    private fun findUnclosedFence(markdown: String): String? {
+        var openFence: String? = null
+        markdown.lineSequence().forEach { line ->
+            val fence = markdownFenceDelimiter(line)
+            if (fence != null) {
+                openFence = if (openFence == fence) null else openFence ?: fence
+            }
+        }
+        return openFence
+    }
+
+    private fun markdownFenceDelimiter(line: String): String? {
+        val trimmed = line.trimStart()
+        return when {
+            trimmed.startsWith("```") -> "```"
+            trimmed.startsWith("~~~") -> "~~~"
+            else -> null
+        }
+    }
+
+    private fun hasUnclosedBlockMath(markdown: String): Boolean {
+        return markdown.lineSequence()
+            .count { it.trim() == BLOCK_MATH_DELIMITER }
+            .rem(2) == 1
     }
 
     private fun timelineCardBackground(tone: TimelineTone): GradientDrawable {
@@ -1285,10 +1413,14 @@ class AnswerPanelOverlay(
             updateTimelineTitle(itemContainer, title)
             contentView.setTextColor(if (isError) errorColor else onSurfaceColor)
             val displayContent = if (isLoading && content.isBlank()) createLoadingDots().toString() else content
-            if (isError || isLoading) {
-                contentView.text = if (isLoading && displayContent.isNotEmpty()) "$displayContent ▎" else displayContent
+            if (isError) {
+                contentView.text = displayContent
+            } else if (title == "回答") {
+                renderMarkdown(contentView, displayContent, showCursor = isLoading)
+            } else if (isLoading) {
+                contentView.text = if (displayContent.isNotEmpty()) "$displayContent $STREAM_CURSOR" else displayContent
             } else {
-                markwon.setMarkdown(contentView, displayContent)
+                renderMarkdown(contentView, displayContent)
             }
             if (!isLoading && !isError && title == "回答") {
                 expandTimelineItem(itemContainer)
@@ -1438,6 +1570,14 @@ class AnswerPanelOverlay(
     }
 
     private fun dp(value: Float): Float = value * density
+
+    private fun sp(value: Float): Float {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_SP,
+            value,
+            context.resources.displayMetrics,
+        )
+    }
 
     private fun showHeightIndicator() {
         heightIndicator?.let { indicator ->
