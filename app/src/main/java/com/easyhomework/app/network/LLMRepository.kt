@@ -827,6 +827,15 @@ class LLMRepository {
         }
     }
 
+    private fun buildEffectiveSystemPrompt(config: LLMConfig, tools: List<ToolDefinition>?): String {
+        return listOf(
+            config.systemPrompt.trim(),
+            TOOL_USAGE_POLICY.takeIf { !tools.isNullOrEmpty() },
+        ).filterNotNull()
+            .filter { it.isNotBlank() }
+            .joinToString("\n\n")
+    }
+
     private fun buildOpenAIBody(
         config: LLMConfig,
         messages: List<ChatMessage>,
@@ -835,9 +844,10 @@ class LLMRepository {
     ): String {
         val apiMessages = mutableListOf<Map<String, Any?>>()
         val supportsImageInput = supportsImageInput(config)
+        val systemPrompt = buildEffectiveSystemPrompt(config, tools)
 
-        if (config.systemPrompt.isNotBlank()) {
-            apiMessages.add(mapOf("role" to "system", "content" to config.systemPrompt))
+        if (systemPrompt.isNotBlank()) {
+            apiMessages.add(mapOf("role" to "system", "content" to systemPrompt))
         }
 
         messages.filter { it.role != ChatMessage.ROLE_SYSTEM }.forEach { msg ->
@@ -1028,8 +1038,9 @@ class LLMRepository {
         )
 
         // System prompt for Anthropic is a top-level field
-        if (config.systemPrompt.isNotBlank()) {
-            body["system"] = config.systemPrompt
+        val systemPrompt = buildEffectiveSystemPrompt(config, tools)
+        if (systemPrompt.isNotBlank()) {
+            body["system"] = systemPrompt
         }
 
         // Only add temperature when thinking is disabled or depth is NONE
@@ -1106,6 +1117,13 @@ class LLMRepository {
         )
         val FUNCTION_CALLING_CAPABILITY_FIELDS = listOf("function_calling", "tool_use")
         val FUNCTION_CALLING_FEATURE_TOKENS = setOf("function_calling", "tool_use", "tools")
+        val TOOL_USAGE_POLICY = """
+            工具调用规则：
+            - 优先直接解答；只有工具能提供必要且更可靠的信息时才调用。
+            - 不要为了展示过程、普通推理、概念解释或可以直接完成的小计算调用工具。
+            - 每次调用前确认题目确实需要该工具的能力；不确定、无关或题干信息已足够时不要调用。
+            - 工具返回后应结合结果给出最终答案，不要重复调用相同工具。
+        """.trimIndent()
         val FUNCTION_CALLING_MODEL_PATTERNS = listOf(
             "gpt-4",
             "gpt-3.5-turbo",

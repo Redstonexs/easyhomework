@@ -586,7 +586,11 @@ class AnswerPanelOverlay(
         thinkingContainer = null
         currentAnswerView = null
 
-        val tools = ToolRegistry.getToolDefinitions()
+        val tools = if (config.supportsFunctionCalling) {
+            ToolRegistry.getToolDefinitions()
+        } else {
+            emptyList()
+        }
         val requestMode = when {
             sendDirectImage -> "直接识图"
             recognizedText.isNotBlank() -> "OCR 识字"
