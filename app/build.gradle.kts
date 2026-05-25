@@ -116,6 +116,7 @@ dependencies {
     implementation(libs.markwon.ext.tables)
     implementation(libs.markwon.ext.tasklist)
     implementation(libs.markwon.html)
+    implementation(libs.markwon.inline.parser)
     implementation(libs.markwon.linkify)
 
     // Local JavaScript execution for LLM math tools

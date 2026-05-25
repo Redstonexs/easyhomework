@@ -50,6 +50,7 @@ import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.ext.tasklist.TaskListPlugin
 import io.noties.markwon.html.HtmlPlugin
+import io.noties.markwon.inlineparser.MarkwonInlineParserPlugin
 import io.noties.markwon.linkify.LinkifyPlugin
 import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
@@ -1208,6 +1209,7 @@ class AnswerPanelOverlay(
             .usePlugin(TablePlugin.create(serviceContext))
             .usePlugin(TaskListPlugin.create(serviceContext))
             .usePlugin(LinkifyPlugin.create())
+            .usePlugin(MarkwonInlineParserPlugin.create())
             .usePlugin(
                 JLatexMathPlugin.create(sp(14f)) { builder ->
                     builder.inlinesEnabled(true)

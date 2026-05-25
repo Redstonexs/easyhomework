@@ -63,6 +63,7 @@ markwon-ext-latex = { group = "io.noties.markwon", name = "ext-latex", version.r
 markwon-ext-tables = { group = "io.noties.markwon", name = "ext-tables", version.ref = "markwon" }
 markwon-ext-tasklist = { group = "io.noties.markwon", name = "ext-tasklist", version.ref = "markwon" }
 markwon-html = { group = "io.noties.markwon", name = "html", version.ref = "markwon" }
+markwon-inline-parser = { group = "io.noties.markwon", name = "inline-parser", version.ref = "markwon" }
 markwon-linkify = { group = "io.noties.markwon", name = "linkify", version.ref = "markwon" }
 
 # Embedded JavaScript engine
