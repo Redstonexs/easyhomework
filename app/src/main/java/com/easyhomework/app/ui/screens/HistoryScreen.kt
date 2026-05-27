@@ -1,6 +1,8 @@
 package com.easyhomework.app.ui.screens
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Help
@@ -42,6 +45,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,6 +55,8 @@ import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.QueryHistory
 import com.easyhomework.app.ui.components.ConfirmDialog
 import com.easyhomework.app.viewmodel.HistoryViewModel
+import android.graphics.BitmapFactory
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -233,6 +241,9 @@ fun HistoryItem(
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(12.dp))
 
+                ScreenshotPreview(history.screenshotPath)
+                Spacer(modifier = Modifier.height(12.dp))
+
                 history.conversations
                     .filter { it.role != ChatMessage.ROLE_SYSTEM }
                     .forEach { message ->
@@ -270,6 +281,52 @@ fun HistoryItem(
                         }
                     }
             }
+        }
+    }
+}
+
+@Composable
+private fun ScreenshotPreview(path: String) {
+    val previewBitmap = remember(path) {
+        val file = File(path)
+        if (!file.exists()) {
+            null
+        } else {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, bounds)
+            var sampleSize = 1
+            while (bounds.outWidth / sampleSize > 960 || bounds.outHeight / sampleSize > 960) {
+                sampleSize *= 2
+            }
+            BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                .let { BitmapFactory.decodeFile(path, it) }
+        }
+    }
+
+    if (previewBitmap != null) {
+        Image(
+            bitmap = previewBitmap.asImageBitmap(),
+            contentDescription = "原截图预览",
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentScale = ContentScale.Fit,
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(12.dp),
+        ) {
+            Text(
+                "原截图文件不存在",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

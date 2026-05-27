@@ -38,6 +38,8 @@ class ScreenCaptureService : Service() {
     private var screenWidth: Int = 0
     private var screenHeight: Int = 0
     private var isCapturing = false
+    private var activeCaptureRequestId = 0L
+    private var activeCaptureCompleted = false
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -49,7 +51,9 @@ class ScreenCaptureService : Service() {
     companion object {
         private var instance: ScreenCaptureService? = null
         private var lastScreenshot: Bitmap? = null
-        private var pendingCapture = false
+        private var pendingCaptureRequestId: Long? = null
+        private var captureRequestSequence = 0L
+        private const val CAPTURE_TIMEOUT_MS = 2_000L
 
         fun isProjectionReady(): Boolean {
             return instance?.mediaProjection != null
@@ -62,9 +66,10 @@ class ScreenCaptureService : Service() {
         }
 
         fun requestCapture() {
+            val requestId = ++captureRequestSequence
+            pendingCaptureRequestId = requestId
             if (instance != null) {
-                pendingCapture = true
-                instance?.captureScreen()
+                instance?.captureScreen(requestId)
             }
         }
 
@@ -77,7 +82,7 @@ class ScreenCaptureService : Service() {
         }
 
         fun stop(context: Context) {
-            pendingCapture = false
+            pendingCaptureRequestId = null
             lastScreenshot = null
             val intent = Intent(context, ScreenCaptureService::class.java)
             context.stopService(intent)
@@ -130,10 +135,16 @@ class ScreenCaptureService : Service() {
 
                 setupImageReader()
 
+                if (mediaProjection == null || imageReader == null || virtualDisplay == null) {
+                    pendingCaptureRequestId = null
+                    notifyScreenshotFailure("截屏服务未准备好，请重新授权后再试")
+                    return@let
+                }
+
                 // If there was a pending capture request, execute it now
-                if (pendingCapture) {
-                    pendingCapture = false
-                    handler?.postDelayed({ captureScreen() }, 300)
+                pendingCaptureRequestId?.let { requestId ->
+                    pendingCaptureRequestId = null
+                    handler?.postDelayed({ captureScreen(requestId) }, 300)
                 }
             }
         }
@@ -172,53 +183,100 @@ class ScreenCaptureService : Service() {
     /**
      * Capture a single frame from the virtual display.
      */
-    private fun captureScreen() {
-        if (isCapturing) return
+    private fun captureScreen(requestId: Long) {
+        if (isCapturing) {
+            pendingCaptureRequestId = null
+            notifyScreenshotFailure("正在截屏，请稍后重试")
+            return
+        }
+        if (mediaProjection == null || imageReader == null) {
+            pendingCaptureRequestId = null
+            notifyScreenshotFailure("截屏服务未准备好，请重新授权后再试")
+            return
+        }
         isCapturing = true
+        activeCaptureRequestId = requestId
+        activeCaptureCompleted = false
 
         handler?.postDelayed({
+            completeCaptureFailure(requestId, "截屏超时，请重试")
+        }, CAPTURE_TIMEOUT_MS)
+
+        handler?.postDelayed({
+            var image: android.media.Image? = null
             try {
-                val image = imageReader?.acquireLatestImage()
-                if (image != null) {
-                    val planes = image.planes
-                    val buffer = planes[0].buffer
-                    val pixelStride = planes[0].pixelStride
-                    val rowStride = planes[0].rowStride
-                    val rowPadding = rowStride - pixelStride * screenWidth
-
-                    val bitmap = Bitmap.createBitmap(
-                        screenWidth + rowPadding / pixelStride,
-                        screenHeight,
-                        Bitmap.Config.ARGB_8888,
-                    )
-                    bitmap.copyPixelsFromBuffer(buffer)
-                    image.close()
-
-                    // Crop to actual screen size (remove padding)
-                    val croppedBitmap = if (rowPadding > 0) {
-                        Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight).also {
-                            if (it != bitmap) bitmap.recycle()
-                        }
-                    } else {
-                        bitmap
-                    }
-
-                    lastScreenshot = croppedBitmap
-
-                    // Notify FloatingBallService
-                    if (FloatingBallService.getInstance() != null) {
-                        val notifyIntent = Intent(this, FloatingBallService::class.java).apply {
-                            action = FloatingBallService.ACTION_SCREENSHOT_RESULT
-                        }
-                        startService(notifyIntent)
-                    }
+                image = imageReader?.acquireLatestImage()
+                if (image == null) {
+                    completeCaptureFailure(requestId, "暂时没有截到屏幕内容，请重试")
+                    return@postDelayed
                 }
+
+                val planes = image.planes
+                val buffer = planes[0].buffer
+                val pixelStride = planes[0].pixelStride
+                val rowStride = planes[0].rowStride
+                val rowPadding = rowStride - pixelStride * screenWidth
+
+                val bitmap = Bitmap.createBitmap(
+                    screenWidth + rowPadding / pixelStride,
+                    screenHeight,
+                    Bitmap.Config.ARGB_8888,
+                )
+                bitmap.copyPixelsFromBuffer(buffer)
+
+                // Crop to actual screen size (remove padding)
+                val croppedBitmap = if (rowPadding > 0) {
+                    Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight).also {
+                        if (it != bitmap) bitmap.recycle()
+                    }
+                } else {
+                    bitmap
+                }
+
+                lastScreenshot = croppedBitmap
+                completeCaptureSuccess(requestId)
             } catch (e: Exception) {
                 e.printStackTrace()
+                completeCaptureFailure(requestId, "截屏失败，请重试")
             } finally {
-                isCapturing = false
+                image?.close()
             }
         }, 100) // Small delay to ensure screen has rendered
+    }
+
+    private fun completeCaptureSuccess(requestId: Long) {
+        if (!markCaptureCompleted(requestId)) return
+        notifyScreenshotSuccess()
+    }
+
+    private fun completeCaptureFailure(requestId: Long, message: String) {
+        if (!markCaptureCompleted(requestId)) return
+        notifyScreenshotFailure(message)
+    }
+
+    private fun markCaptureCompleted(requestId: Long): Boolean {
+        if (activeCaptureRequestId != requestId || activeCaptureCompleted) return false
+        activeCaptureCompleted = true
+        pendingCaptureRequestId = null
+        isCapturing = false
+        return true
+    }
+
+    private fun notifyScreenshotSuccess() {
+        if (FloatingBallService.getInstance() == null) return
+        val notifyIntent = Intent(this, FloatingBallService::class.java).apply {
+            action = FloatingBallService.ACTION_SCREENSHOT_RESULT
+        }
+        startService(notifyIntent)
+    }
+
+    private fun notifyScreenshotFailure(message: String) {
+        if (FloatingBallService.getInstance() == null) return
+        val notifyIntent = Intent(this, FloatingBallService::class.java).apply {
+            action = FloatingBallService.ACTION_SCREENSHOT_RESULT
+            putExtra(FloatingBallService.EXTRA_SCREENSHOT_ERROR, message)
+        }
+        startService(notifyIntent)
     }
 
     private fun cleanupProjection(stopProjection: Boolean = true) {
@@ -251,4 +309,5 @@ class ScreenCaptureService : Service() {
             .setSilent(true)
             .build()
     }
+
 }

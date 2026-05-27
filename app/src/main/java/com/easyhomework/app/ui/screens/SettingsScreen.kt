@@ -110,6 +110,7 @@ fun SettingsScreen(
     val saveMessage by viewModel.saveMessage.collectAsState()
     val availableModels by viewModel.availableModels.collectAsState()
     val isFetchingModels by viewModel.isFetchingModels.collectAsState()
+    val autoSubmitDetectedRegion by viewModel.autoSubmitDetectedRegion.collectAsState()
     var serviceEnabled by remember { mutableStateOf(isServiceRunning) }
     var showApiKey by remember { mutableStateOf(false) }
     var expandAdvanced by remember { mutableStateOf(false) }
@@ -255,6 +256,30 @@ fun SettingsScreen(
                         checked = config.miniBall,
                         onCheckedChange = { mini ->
                             viewModel.updateConfig(config.copy(miniBall = mini))
+                        },
+                    )
+                }
+            }
+
+            SettingsCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SettingsIcon(Icons.Outlined.Tune, AccentOrange)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("自动提交识别到的题目区域", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "高置信度框选后直接搜题，关闭后先让你确认",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = autoSubmitDetectedRegion,
+                        onCheckedChange = { enabled ->
+                            viewModel.updateAutoSubmitDetectedRegion(enabled)
                         },
                     )
                 }
@@ -795,10 +820,8 @@ fun SettingsScreen(
             Button(
                 onClick = {
                     val error = viewModel.validateConfig()
-                    if (error != null) {
-                        // handled via snackbar
-                    } else {
-                        viewModel.saveConfig()
+                    viewModel.saveConfig()
+                    if (error == null) {
                         FloatingBallService.getInstance()?.recreateFloatingBall()
                     }
                 },

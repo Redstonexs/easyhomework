@@ -182,6 +182,10 @@ class PreferencesManager(context: Context) {
         get() = prefs.getBoolean(KEY_MINI_BALL, false)
         set(value) = prefs.edit().putBoolean(KEY_MINI_BALL, value).apply()
 
+    var autoSubmitDetectedRegion: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_SUBMIT_DETECTED_REGION, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_SUBMIT_DETECTED_REGION, value).apply()
+
     // ---- Floating Ball State ----
 
     var isFloatingBallEnabled: Boolean
@@ -241,6 +245,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_THINKING_ENABLED = "thinking_enabled"
         private const val KEY_THINKING_DEPTH = "thinking_depth"
         private const val KEY_MINI_BALL = "mini_ball"
+        private const val KEY_AUTO_SUBMIT_DETECTED_REGION = "auto_submit_detected_region"
         private const val KEY_FLOATING_BALL_ENABLED = "floating_ball_enabled"
         private const val KEY_BALL_X = "ball_x"
         private const val KEY_BALL_Y = "ball_y"

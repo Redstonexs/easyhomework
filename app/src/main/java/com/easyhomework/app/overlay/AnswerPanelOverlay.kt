@@ -1470,18 +1470,28 @@ class AnswerPanelOverlay(
     }
 
     private fun regenerateAnswer() {
-        val lastIdx = messages.indexOfLast { it.role == ChatMessage.ROLE_ASSISTANT }
-        if (lastIdx >= 0) {
-            messages.removeAt(lastIdx)
+        val lastUserIdx = messages.indexOfLast { it.role == ChatMessage.ROLE_USER }
+        if (lastUserIdx < 0 || lastUserIdx == messages.lastIndex) {
+            return
+        }
+
+        for (i in messages.lastIndex downTo lastUserIdx + 1) {
+            messages.removeAt(i)
         }
 
         for (i in messagesContainer.childCount - 1 downTo 0) {
             val child = messagesContainer.getChildAt(i)
             if (child is LinearLayout && child.tag == TAG_ASSISTANT_TIMELINE) {
                 messagesContainer.removeViewAt(i)
+            } else {
                 break
             }
         }
+        currentTimelineBody = null
+        currentAnswerView = null
+        thinkingView = null
+        thinkingContainer = null
+        isThinkingPhase = false
 
         val loadingView = addAssistantBubble("", isLoading = true)
         sendToLLM(loadingView)

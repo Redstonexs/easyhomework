@@ -37,6 +37,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _isFetchingModels = MutableStateFlow(false)
     val isFetchingModels: StateFlow<Boolean> = _isFetchingModels.asStateFlow()
 
+    private val _autoSubmitDetectedRegion = MutableStateFlow(preferencesManager.autoSubmitDetectedRegion)
+    val autoSubmitDetectedRegion: StateFlow<Boolean> = _autoSubmitDetectedRegion.asStateFlow()
+
     init {
         // If no providers exist, create a default one
         if (_providerConfigs.value.isEmpty()) {
@@ -124,6 +127,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun saveConfig() {
+        validateConfig()?.let { error ->
+            _saveMessage.value = error
+            return
+        }
+
         val currentConfig = _config.value
         val updatedList = _providerConfigs.value.map {
             if (it.id == currentConfig.id) currentConfig else it
@@ -136,6 +144,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         preferencesManager.miniBall = currentConfig.miniBall
 
         _saveMessage.value = "设置已保存"
+    }
+
+    fun updateAutoSubmitDetectedRegion(enabled: Boolean) {
+        _autoSubmitDetectedRegion.value = enabled
+        preferencesManager.autoSubmitDetectedRegion = enabled
     }
 
     fun clearSaveMessage() {

@@ -112,9 +112,25 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startFloatingBallService() {
+        validateConfigBeforeStart()?.let { message ->
+            preferencesManager.isFloatingBallEnabled = false
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            return
+        }
+
         preferencesManager.isFloatingBallEnabled = true
         FloatingBallService.start(this)
         Toast.makeText(this, "悬浮球已开启", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun validateConfigBeforeStart(): String? {
+        val config = preferencesManager.getLLMConfig()
+        return when {
+            config.apiEndpoint.isBlank() -> "请先填写 API 端点"
+            config.apiKey.isBlank() -> "请先填写 API 密钥"
+            config.modelName.isBlank() -> "请先填写模型名称"
+            else -> null
+        }
     }
 
     private fun stopFloatingBallService() {

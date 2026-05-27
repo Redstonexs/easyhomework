@@ -45,6 +45,7 @@ class FloatingBallService : Service() {
     private var regionSelector: RegionSelectorOverlay? = null
     private var answerPanel: AnswerPanelOverlay? = null
     private var lastRegionScreenshot: Bitmap? = null
+    private var awaitingScreenshotResult = false
 
     private var ballParams: WindowManager.LayoutParams? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -68,6 +69,7 @@ class FloatingBallService : Service() {
     companion object {
         const val ACTION_SCREENSHOT_RESULT = "com.easyhomework.SCREENSHOT_RESULT"
         const val EXTRA_SCREENSHOT_PATH = "screenshot_path"
+        const val EXTRA_SCREENSHOT_ERROR = "screenshot_error"
 
         private const val CLICK_THRESHOLD = 10
         private const val BALL_SIZE_NORMAL = 52
@@ -105,9 +107,22 @@ class FloatingBallService : Service() {
         intent?.let {
             when (it.action) {
                 ACTION_SCREENSHOT_RESULT -> {
+                    if (!awaitingScreenshotResult) return@let
+                    awaitingScreenshotResult = false
+
+                    val error = it.getStringExtra(EXTRA_SCREENSHOT_ERROR)
+                    if (!error.isNullOrBlank()) {
+                        showFloatingBallAgain()
+                        Toast.makeText(this, error, Toast.LENGTH_SHORT).show()
+                        return@let
+                    }
+
                     val bitmap = ScreenCaptureService.getLastScreenshot()
                     if (bitmap != null) {
                         showRegionSelector(bitmap)
+                    } else {
+                        showFloatingBallAgain()
+                        Toast.makeText(this, "截屏失败，请重试", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -200,6 +215,7 @@ class FloatingBallService : Service() {
     }
 
     fun showFloatingBallAgain() {
+        awaitingScreenshotResult = false
         floatingBallView?.visibility = View.VISIBLE
     }
 
@@ -292,6 +308,22 @@ class FloatingBallService : Service() {
     // ---- Screenshot Flow ----
 
     private fun onFloatingBallClicked() {
+        val config = preferencesManager.getLLMConfig()
+        when {
+            config.apiEndpoint.isBlank() -> {
+                Toast.makeText(this, "请先在设置中填写 API 端点", Toast.LENGTH_SHORT).show()
+                return
+            }
+            config.apiKey.isBlank() -> {
+                Toast.makeText(this, "请先在设置中填写 API 密钥", Toast.LENGTH_SHORT).show()
+                return
+            }
+            config.modelName.isBlank() -> {
+                Toast.makeText(this, "请先在设置中填写模型名称", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+
         floatingBallView?.let { ball ->
             ball.animate()
                 .scaleX(0.8f).scaleY(0.8f)
@@ -306,11 +338,13 @@ class FloatingBallService : Service() {
         }
 
         if (ScreenCaptureService.isProjectionReady()) {
+            awaitingScreenshotResult = true
             hideFloatingBall()
             floatingBallView?.postDelayed({
                 ScreenCaptureService.requestCapture()
             }, 250)
         } else {
+            awaitingScreenshotResult = true
             val intent = Intent(this, ScreenCapturePermissionActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
@@ -323,8 +357,9 @@ class FloatingBallService : Service() {
     fun showRegionSelector(screenshot: Bitmap, allowAutoSubmit: Boolean = true) {
         removeRegionSelector()
         lastRegionScreenshot = screenshot
+        val shouldAutoSubmit = allowAutoSubmit && preferencesManager.autoSubmitDetectedRegion
 
-        regionSelector = RegionSelectorOverlay(this, screenshot, allowAutoSubmit).apply {
+        regionSelector = RegionSelectorOverlay(this, screenshot, shouldAutoSubmit).apply {
             onConfirm = { croppedBitmap, recognizedText, sendDirectImage ->
                 removeRegionSelector()
                 showAnswerPanel(croppedBitmap, recognizedText, sendDirectImage)
