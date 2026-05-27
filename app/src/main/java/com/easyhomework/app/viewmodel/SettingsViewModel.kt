@@ -3,6 +3,7 @@ package com.easyhomework.app.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.model.ModelInfo
@@ -60,19 +61,21 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updateModelName(modelName: String) {
         val modelInfo = _availableModels.value.find { it.id == modelName }
         _config.value = if (modelInfo != null) {
-            _config.value.copy(
-                modelName = modelName,
-                supportsVision = modelInfo.supportsVision,
-                visionCapabilitySource = modelInfo.visionCapabilitySource,
-                supportsFunctionCalling = modelInfo.supportsFunctionCalling,
-                supportsThinking = modelInfo.supportsThinking,
+            _config.value.withModelInfo(modelInfo)
+        } else {
+            _config.value.withAutoModelCapabilities(modelName)
+        }
+    }
+
+    fun updateApiType(apiType: ApiType, apiPath: String) {
+        _availableModels.value = emptyList()
+        val current = _config.value.copy(apiType = apiType, apiPath = apiPath)
+        _config.value = if (current.visionCapabilitySource == CapabilitySource.MANUAL) {
+            current.copy(
+                supportsFunctionCalling = LLMConfig.modelSupportsFunctionCalling(apiType, current.modelName),
             )
         } else {
-            _config.value.copy(
-                modelName = modelName,
-                supportsVision = LLMConfig.modelSupportsVision(modelName),
-                visionCapabilitySource = CapabilitySource.AUTO,
-            )
+            current.withAutoModelCapabilities(current.modelName)
         }
     }
 
@@ -80,6 +83,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val config = _providerConfigs.value.find { it.id == id } ?: return
         _activeProviderId.value = id
         _config.value = config
+        _availableModels.value = emptyList()
         preferencesManager.activeProviderId = id
     }
 
@@ -92,6 +96,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _providerConfigs.value = updatedList
         _activeProviderId.value = newConfig.id
         _config.value = newConfig
+        _availableModels.value = emptyList()
         preferencesManager.saveProviderConfigs(updatedList)
         preferencesManager.activeProviderId = newConfig.id
     }
@@ -111,6 +116,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             if (first != null) {
                 _activeProviderId.value = first.id
                 _config.value = first
+                _availableModels.value = emptyList()
                 preferencesManager.activeProviderId = first.id
             }
         }
@@ -179,12 +185,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     val modelInfo = models.find { it.id == _config.value.modelName }
                     val currentModelUpdated = modelInfo != null
                     if (modelInfo != null) {
-                        _config.value = _config.value.copy(
-                            supportsVision = modelInfo.supportsVision,
-                            visionCapabilitySource = modelInfo.visionCapabilitySource,
-                            supportsFunctionCalling = modelInfo.supportsFunctionCalling,
-                            supportsThinking = modelInfo.supportsThinking,
-                        )
+                        _config.value = _config.value.withModelInfo(modelInfo)
                     }
                     if (models.isEmpty()) {
                         _saveMessage.value = "未找到可用模型"
@@ -200,5 +201,26 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             )
             _isFetchingModels.value = false
         }
+    }
+
+    private fun LLMConfig.withModelInfo(modelInfo: ModelInfo): LLMConfig {
+        val hasManualVisionOverride = visionCapabilitySource == CapabilitySource.MANUAL
+        return copy(
+            modelName = modelInfo.id,
+            supportsVision = if (hasManualVisionOverride) supportsVision else modelInfo.supportsVision,
+            visionCapabilitySource = if (hasManualVisionOverride) CapabilitySource.MANUAL else modelInfo.visionCapabilitySource,
+            supportsFunctionCalling = modelInfo.supportsFunctionCalling,
+            supportsThinking = modelInfo.supportsThinking,
+        )
+    }
+
+    private fun LLMConfig.withAutoModelCapabilities(modelName: String): LLMConfig {
+        val hasManualVisionOverride = visionCapabilitySource == CapabilitySource.MANUAL
+        return copy(
+            modelName = modelName,
+            supportsVision = if (hasManualVisionOverride) supportsVision else LLMConfig.modelSupportsVision(modelName),
+            visionCapabilitySource = if (hasManualVisionOverride) CapabilitySource.MANUAL else CapabilitySource.AUTO,
+            supportsFunctionCalling = LLMConfig.modelSupportsFunctionCalling(apiType, modelName),
+        )
     }
 }

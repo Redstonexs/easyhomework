@@ -294,7 +294,7 @@ class LLMRepository {
     private fun detectVisionCapability(modelJson: JsonObject, apiType: ApiType, modelId: String): CapabilityDetection {
         return when (detectVisionCapabilityFromMetadata(modelJson)) {
             CapabilityStatus.SUPPORTED -> CapabilityDetection(supported = true, source = CapabilitySource.API)
-            CapabilityStatus.UNSUPPORTED -> CapabilityDetection(supported = false, source = CapabilitySource.API)
+            CapabilityStatus.UNSUPPORTED -> CapabilityDetection(supported = false, source = CapabilitySource.API_UNSUPPORTED)
             CapabilityStatus.UNKNOWN -> CapabilityDetection(
                 supported = fallbackVisionCapability(apiType, modelId),
                 source = CapabilitySource.AUTO,
@@ -375,10 +375,17 @@ class LLMRepository {
             element.isJsonPrimitive -> containsVisionToken(element.asString)
             element.isJsonArray -> element.asJsonArray.any { elementContainsVisionToken(it) }
             element.isJsonObject -> element.asJsonObject.entrySet().any { entry ->
-                elementContainsVisionToken(entry.value)
+                (containsVisionToken(entry.key) && !isExplicitFalse(entry.value)) ||
+                    elementContainsVisionToken(entry.value)
             }
             else -> false
         }
+    }
+
+    private fun isExplicitFalse(element: JsonElement?): Boolean {
+        booleanValue(element)?.let { return !it }
+        if (element == null || element.isJsonNull || !element.isJsonPrimitive) return false
+        return element.asString.lowercase() in setOf("false", "no", "none", "unsupported")
     }
 
     private fun containsVisionToken(value: String): Boolean {
@@ -398,9 +405,7 @@ class LLMRepository {
     }
 
     private fun fallbackFunctionCallingCapability(apiType: ApiType, modelId: String): Boolean {
-        val lower = modelId.lowercase()
-        return modelMatchesAny(lower, FUNCTION_CALLING_MODEL_PATTERNS) ||
-            apiType == ApiType.ANTHROPIC && modelMatchesAny(lower, CLAUDE_CAPABILITY_MODEL_PATTERNS)
+        return LLMConfig.modelSupportsFunctionCalling(apiType, modelId)
     }
 
     /**
@@ -648,7 +653,7 @@ class LLMRepository {
             val id = textValue(toolCallObj.get("id")).orEmpty()
             val arguments = argumentValue(function?.get("arguments"))
             ToolCall(id = id.ifBlank { "tool_call_$index" }, name = name, arguments = arguments.ifBlank { "{}" })
-        }
+        } ?: parseLegacyOpenAIFunctionCall(message ?: delta)
 
         return ChatResponse(content = content, toolCalls = toolCalls, thinking = thinking)
     }
@@ -699,6 +704,20 @@ class LLMRepository {
             thinking = thinkingParts.joinToString("").ifBlank { null },
             toolCalls = toolCalls.ifEmpty { null },
         ).takeIf { it.hasPayload() }
+    }
+
+    private fun parseLegacyOpenAIFunctionCall(message: JsonObject?): List<ToolCall>? {
+        val function = objectValue(message?.get("function_call")) ?: return null
+        val name = textValue(function.get("name")).orEmpty()
+        if (name.isBlank()) return null
+
+        return listOf(
+            ToolCall(
+                id = textValue(message?.get("id")) ?: "tool_call_0",
+                name = name,
+                arguments = argumentValue(function.get("arguments")).ifBlank { "{}" },
+            ),
+        )
     }
 
     private fun parseGenericResponse(json: JsonObject): ChatResponse? {
@@ -873,7 +892,6 @@ class LLMRepository {
 
         if (!tools.isNullOrEmpty()) {
             body["tools"] = tools.map { it.toJson() }
-            body["tool_choice"] = "auto"
         }
 
         return gson.toJson(body)
@@ -1120,6 +1138,8 @@ class LLMRepository {
         val TOOL_USAGE_POLICY = """
             工具调用规则：
             - 优先直接解答；只有工具能提供必要且更可靠的信息时才调用。
+            - 用户明确询问今天日期、当前日期、现在几点、当前时间、星期几或实时 UNIX 时间戳时，必须调用 get_current_datetime 后再回答。
+            - 需要精确数值计算、单位换算或多步程序化验证时，分别使用 calculate、convert_unit 或 run_javascript。
             - 不要为了展示过程、普通推理、概念解释或可以直接完成的小计算调用工具。
             - 每次调用前确认题目确实需要该工具的能力；不确定、无关或题干信息已足够时不要调用。
             - 工具返回后应结合结果给出最终答案，不要重复调用相同工具。

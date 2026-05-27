@@ -415,7 +415,7 @@ fun SettingsScreen(
                                         ApiType.OPENAI -> "/v1/chat/completions"
                                         ApiType.ANTHROPIC -> "/v1/messages"
                                     }
-                                    viewModel.updateConfig(config.copy(apiType = type, apiPath = newPath))
+                                    viewModel.updateApiType(type, newPath)
                                 },
                                 label = { Text(type.displayName) },
                             )
@@ -538,15 +538,7 @@ fun SettingsScreen(
                                                 }
                                             },
                                             onClick = {
-                                                viewModel.updateConfig(
-                                                    config.copy(
-                                                        modelName = model.id,
-                                                        supportsVision = model.supportsVision,
-                                                        visionCapabilitySource = model.visionCapabilitySource,
-                                                        supportsFunctionCalling = model.supportsFunctionCalling,
-                                                        supportsThinking = model.supportsThinking,
-                                                    ),
-                                                )
+                                                viewModel.updateModelName(model.id)
                                                 showModelDropdown = false
                                             },
                                             trailingIcon = {
@@ -588,15 +580,7 @@ fun SettingsScreen(
                                             )
                                         },
                                         onClick = {
-                                            viewModel.updateConfig(
-                                                config.copy(
-                                                    modelName = model.id,
-                                                    supportsVision = model.supportsVision,
-                                                    visionCapabilitySource = model.visionCapabilitySource,
-                                                    supportsFunctionCalling = model.supportsFunctionCalling,
-                                                    supportsThinking = model.supportsThinking,
-                                                ),
-                                            )
+                                            viewModel.updateModelName(model.id)
                                             showModelDropdown = false
                                         },
                                         trailingIcon = {
@@ -860,7 +844,8 @@ fun SettingsScreen(
 
 private fun visionSupportDescription(source: CapabilitySource): String {
     return when (source) {
-        CapabilitySource.API -> "已从模型接口自动识别，可手动覆盖"
+        CapabilitySource.API -> "模型接口明确支持图像输入，可手动覆盖"
+        CapabilitySource.API_UNSUPPORTED -> "模型接口明确不支持图像输入，可手动覆盖"
         CapabilitySource.AUTO -> "优先接口识别；接口缺失时按模型名称自动判断"
         CapabilitySource.MANUAL -> "已手动设置，截屏后可直接发送图片给模型"
     }

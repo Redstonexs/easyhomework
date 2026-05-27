@@ -587,7 +587,7 @@ class AnswerPanelOverlay(
         thinkingContainer = null
         currentAnswerView = null
 
-        val tools = if (config.supportsFunctionCalling) {
+        val tools = if (config.supportsToolCalling()) {
             ToolRegistry.getToolDefinitions()
         } else {
             emptyList()
@@ -600,6 +600,22 @@ class AnswerPanelOverlay(
         val noResponseDetails = buildNoResponseDetails(config, requestMode, tools.size)
 
         scope.launch {
+            if (tools.isNotEmpty() && shouldPreloadCurrentDatetimeTool()) {
+                handleToolCalls(
+                    fullText = null,
+                    thinkingText = null,
+                    toolCalls = listOf(
+                        ToolCall(
+                            id = "local_datetime_${System.currentTimeMillis()}",
+                            name = "get_current_datetime",
+                            arguments = "{}",
+                        ),
+                    ),
+                    loadingView = loadingView,
+                )
+                return@launch
+            }
+
             if (config.stream) {
                 val pendingToolCalls = mutableListOf<ToolCall>()
                 var contentReceived = false
@@ -827,6 +843,44 @@ class AnswerPanelOverlay(
                 )
             }
         }
+    }
+
+    private fun shouldPreloadCurrentDatetimeTool(): Boolean {
+        val lastUserIndex = messages.indexOfLast { it.role == ChatMessage.ROLE_USER }
+        if (lastUserIndex < 0) return false
+
+        val messagesAfterLastUser = messages.drop(lastUserIndex + 1)
+        val alreadyUsedDatetimeTool = messagesAfterLastUser.any { message ->
+            message.toolCallId?.startsWith("local_datetime_") == true ||
+                message.toolCalls.orEmpty().any { toolCall ->
+                    toolCall.name == "get_current_datetime" || toolCall.name == "get_current_datatime"
+                }
+        }
+        if (alreadyUsedDatetimeTool) return false
+
+        return isCurrentDatetimeQuestion(messages[lastUserIndex].content)
+    }
+
+    private fun isCurrentDatetimeQuestion(text: String): Boolean {
+        val compact = text.lowercase().replace(Regex("\\s+"), "")
+        val currentMarkers = listOf("今天", "今日", "现在", "当前", "此刻", "本地", "today", "now", "current")
+        val datetimeMarkers = listOf(
+            "几月几号",
+            "几号",
+            "日期",
+            "年月日",
+            "星期几",
+            "周几",
+            "礼拜几",
+            "几点",
+            "当前时间",
+            "时间戳",
+            "date",
+            "time",
+            "weekday",
+            "timestamp",
+        )
+        return currentMarkers.any { compact.contains(it) } && datetimeMarkers.any { compact.contains(it) }
     }
 
     private fun buildNoResponseDetails(config: LLMConfig, requestMode: String, toolCount: Int): String {
