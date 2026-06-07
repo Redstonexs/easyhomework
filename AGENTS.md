@@ -3,60 +3,41 @@
 ## Commands
 
 ```bash
-./gradlew assembleDebug        # Debug APK
-./gradlew assembleRelease      # Release APK (minified + shrunk)
+./gradlew assembleDebug        # focused verification; builds debug APK
+./gradlew assembleRelease      # minified + resource-shrunk release APK
+./gradlew ktlintCheck          # available, currently uses app/ktlint-baseline.xml
+./gradlew detekt               # available, currently uses app/detekt-baseline.xml
 ```
 
-Pass CI version overrides: `-PCI_VERSION_CODE=<int> -PCI_VERSION_NAME=<semver>`
+- Pass release version overrides as `-PCI_VERSION_CODE=<int> -PCI_VERSION_NAME=<semver>`.
+- No `test/` or `androidTest/` Kotlin test sources exist; use Gradle compilation as the default verification step unless adding tests.
+- CI only runs on pushes to `main`, builds `assembleRelease`, optionally signs with keystore secrets, and creates a GitHub pre-release tag.
 
-No test sources exist in this repo. Use Gradle compilation as the focused verification step; there is no separate lint/typecheck task documented here.
+## Project Shape
 
-## Architecture
+- Single Android app module: `app/`; package/application id: `com.easyhomework.app`.
+- Kotlin/JVM target is 17; wrapper uses Gradle 9.0.0; Android config is `compileSdk = 34`, `targetSdk = 34`, `minSdk = 26`.
+- Dependencies must go through `gradle/libs.versions.toml`; do not add raw Maven coordinates in build scripts.
+- KSP is used for Room and exports schemas to `app/schemas`; keep schema JSON updated when touching Room entities/DAO/database version. Do not add kapt.
+- `local.properties` is intentionally not tracked; it is machine-specific SDK configuration.
 
-Single-module Android app (`app/`). Package: `com.easyhomework.app`.
+## Architecture Notes
 
-**UI is hybrid**: Jetpack Compose for app screens (`ui/screens/`, `viewmodel/`), traditional Android Views for overlays (`overlay/`, `FloatingBallView`). Do not convert one style to the other unless explicitly requested.
+- UI is hybrid: Compose screens live in `ui/screens/` with `viewmodel/`; overlays are traditional Android Views in `overlay/`. Do not convert one style to the other unless asked.
+- Runtime flow: `MainActivity` toggles `FloatingBallService`; the floating ball launches `ScreenCapturePermissionActivity` when MediaProjection is not ready; `ScreenCaptureService` captures one bitmap and signals `FloatingBallService.ACTION_SCREENSHOT_RESULT`; `RegionSelectorOverlay` crops/OCRs or sends direct image; `AnswerPanelOverlay` streams through `LLMRepository`, executes tools, renders Markwon markdown, and persists Room history.
+- `ScreenCaptureService` hands screenshots via an in-process static `lastScreenshot`; `getLastScreenshot()` consumes and clears it. Be careful with bitmap lifetime and avoid storing raw bitmaps in Room/Gson data.
+- `FloatingBallService` comments mention edge snapping, but current behavior only persists `PreferencesManager.floatingBallX/Y` after drag.
+- Mini ball mode uses a 48dp touch target but draws a small semi-transparent gray dot in `FloatingBallView.onDraw`.
 
-Key execution flow:
-1. `MainActivity` starts/stops `FloatingBallService` after overlay permission.
-2. Tapping the floating ball opens `ScreenCapturePermissionActivity` if MediaProjection is not ready, then starts `ScreenCaptureService`.
-3. `ScreenCaptureService` captures one bitmap and notifies `FloatingBallService` via `ACTION_SCREENSHOT_RESULT`.
-4. `FloatingBallService` shows `RegionSelectorOverlay`; confirm either OCRs via ML Kit or sends the cropped image directly for vision models.
-5. `AnswerPanelOverlay` streams through `LLMRepository`, renders markdown with Markwon, executes tool calls, and saves Room history.
+## Data And Config
 
-## Key directories
+- `PreferencesManager` stores multiple `LLMConfig` providers; non-sensitive fields are plain prefs, API keys are in `EncryptedSharedPreferences`, active provider is `activeProviderId`.
+- `PreferencesManager.getLLMConfig()` intentionally falls back to legacy single-provider keys. Do not remove legacy keys without a migration.
+- Room history is `QueryHistory`; list screens should use lightweight summary queries and load full `conversations` only when needed.
+- Room no longer uses destructive migration; future schema changes need explicit migrations.
 
-| Path | Purpose |
-|------|---------|
-| `service/` | Foreground services for floating ball and MediaProjection capture |
-| `overlay/` | View-based overlays: floating ball, region selector, answer panel |
-| `network/` | LLM API client (OpenAI-compatible + Anthropic), SSE streaming parser |
-| `tools/` | Tool definitions + executor for LLM function calling |
-| `model/` | Data classes (LLMConfig, ChatMessage, ModelInfo, QueryHistory) |
-| `data/` | Room database + DAO |
-| `ocr/` | ML Kit text recognition + smart region detection |
-| `ui/` | Compose screens (Settings, History) + theme |
-| `viewmodel/` | ViewModels for Compose screens |
-| `util/` | PreferencesManager (encrypted + plain prefs) |
+## LLM Specifics
 
-## Conventions
-
-- **Multi-provider configs**: `PreferencesManager` stores a list of `LLMConfig` with encrypted API keys. Active provider tracked by `activeProviderId`.
-- **Legacy config fallback exists**: `PreferencesManager.getLLMConfig()` first uses multi-provider config, then old single-provider keys. Do not remove legacy keys without a migration reason.
-- **Tool calling**: Tools are defined in `ToolRegistry`, executed by `ToolExecutor`, collected during streaming, then processed after stream completion in `AnswerPanelOverlay.processToolCalls`.
-- **Floating ball position**: Persisted in `PreferencesManager.floatingBallX/Y` only after drag. There is no edge snapping despite an outdated comment in `FloatingBallService`.
-- **Mini ball**: Touch target is `BALL_TOUCH_SIZE_MINI`, but drawing is controlled by `FloatingBallView.onDraw`; current mini mode is semi-transparent gray, not the normal gradient.
-- **Vision models**: Capability comes from API `/v1/models` metadata plus `LLMConfig.modelSupportsVision(...)`. When supported, `RegionSelectorOverlay` shows "直接识图" to skip OCR.
-- **Anthropic requests differ**: `LLMRepository` puts system prompt at top level and merges tool result messages into user content blocks; preserve this when touching request shaping.
-
-## Build quirks
-
-- Uses Gradle version catalogs (`gradle/libs.versions.toml`); always use `libs.xxx` aliases, not raw strings.
-- KSP is configured for Room annotation processing; do not add kapt.
-- `compileSdk = 34`, `targetSdk = 34`, `minSdk = 26`, JDK/JVM target 17.
-- Release builds enable minify and resource shrink with `app/proguard-rules.pro`.
-- No `local.properties` in git — it's machine-specific (SDK path).
-
-## CI
-
-GitHub Actions (`.github/workflows/build-release.yml`) runs only on pushes to `main`: computes the next `v*` patch tag, builds `assembleRelease` with CI version properties, optionally signs if `KEYSTORE_BASE64` exists, and creates a GitHub pre-release.
+- OpenAI-compatible and Anthropic request shapes differ in `LLMRepository`: Anthropic uses top-level `system` and merges tool result messages into user content blocks.
+- Vision support comes from `/v1/models` metadata plus `LLMConfig.modelSupportsVision(...)`; when supported, `RegionSelectorOverlay` shows `直接识图` to skip OCR.
+- Tools are declared in `ToolRegistry`, parsed from streaming deltas by `SSEStreamParser`, executed by `ToolExecutor`, then recursively handled in `AnswerPanelOverlay.processToolCalls` with a max depth guard.
