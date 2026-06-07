@@ -98,6 +98,7 @@ class AnswerPanelOverlay(
     private val messages = mutableListOf<ChatMessage>()
     private var currentStreamingText = StringBuilder()
     private var historyId: Long = -1
+    private var historyScreenshotPath: String? = null
     private var conversationStarted = false
 
     private companion object {
@@ -1554,13 +1555,16 @@ class AnswerPanelOverlay(
     private fun saveToHistory() {
         scope.launch(Dispatchers.IO) {
             try {
-                val screenshotFile = java.io.File(
-                    context.filesDir,
-                    "screenshots/screenshot_${System.currentTimeMillis()}.png",
-                )
-                screenshotFile.parentFile?.mkdirs()
-                java.io.FileOutputStream(screenshotFile).use { fos ->
-                    screenshotBitmap.compress(Bitmap.CompressFormat.PNG, 85, fos)
+                val screenshotPath = historyScreenshotPath ?: run {
+                    val screenshotFile = java.io.File(
+                        context.filesDir,
+                        "screenshots/screenshot_${System.currentTimeMillis()}.png",
+                    )
+                    screenshotFile.parentFile?.mkdirs()
+                    java.io.FileOutputStream(screenshotFile).use { fos ->
+                        screenshotBitmap.compress(Bitmap.CompressFormat.PNG, 85, fos)
+                    }
+                    screenshotFile.absolutePath.also { historyScreenshotPath = it }
                 }
 
                 val previewSource = recognizedText.ifBlank { IMAGE_USER_PLACEHOLDER }
@@ -1576,7 +1580,7 @@ class AnswerPanelOverlay(
                         message.imageBitmap != null &&
                         message.content == IMAGE_SOLVING_PROMPT
                     ) {
-                        message.copy(content = IMAGE_USER_PLACEHOLDER)
+                        message.copy(content = IMAGE_USER_PLACEHOLDER, imageBitmap = null)
                     } else {
                         message
                     }
@@ -1584,7 +1588,7 @@ class AnswerPanelOverlay(
 
                 val history = QueryHistory(
                     id = if (historyId > 0) historyId else 0,
-                    screenshotPath = screenshotFile.absolutePath,
+                    screenshotPath = screenshotPath,
                     recognizedText = if (sendDirectImage) IMAGE_USER_PLACEHOLDER else recognizedText,
                     conversations = historyMessages,
                     previewText = preview,

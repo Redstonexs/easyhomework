@@ -22,6 +22,14 @@ data class QueryHistory(
     val previewText: String = "", // Short preview of the question for list display
 )
 
+data class QueryHistorySummary(
+    val id: Long,
+    val timestamp: Long,
+    val screenshotPath: String,
+    val recognizedText: String,
+    val previewText: String = "",
+)
+
 /**
  * Type converter for Room to serialize/deserialize List<ChatMessage> as JSON.
  */

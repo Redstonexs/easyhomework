@@ -11,7 +11,7 @@ import com.easyhomework.app.model.QueryHistory
 @Database(
     entities = [QueryHistory::class],
     version = 1,
-    exportSchema = false,
+    exportSchema = true,
 )
 @TypeConverters(ChatMessageListConverter::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -29,7 +29,6 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "easyhomework_database",
                 )
-                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance

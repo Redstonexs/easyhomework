@@ -17,6 +17,10 @@ detekt {
     baseline = file("detekt-baseline.xml")
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 android {
     namespace = "com.easyhomework.app"
     compileSdk = 34
@@ -73,9 +77,10 @@ dependencies {
     // Core Android
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
-    implementation("androidx.fragment:fragment-ktx:1.8.1")
+    implementation(libs.androidx.fragment.ktx)
 
     // Jetpack Compose
     implementation(platform(libs.androidx.compose.bom))

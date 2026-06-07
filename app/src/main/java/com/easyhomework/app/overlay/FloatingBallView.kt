@@ -43,6 +43,20 @@ class FloatingBallView @JvmOverloads constructor(
         color = glowColor
         maskFilter = BlurMaskFilter(30f, BlurMaskFilter.Blur.OUTER)
     }
+    private val miniPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#4D5F6368")
+        style = Paint.Style.FILL
+    }
+    private val miniBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#66FFFFFF")
+        style = Paint.Style.STROKE
+        strokeWidth = 1f
+    }
+    private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textAlign = Paint.Align.CENTER
+    }
 
     private var breathingScale = 1f
     private var breathingAnimator: ValueAnimator? = null
@@ -74,19 +88,8 @@ class FloatingBallView @JvmOverloads constructor(
 
         if (isMiniMode) {
             val miniRadius = min(width, height) * 0.13f
-
-            val miniPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#4D5F6368")
-                style = Paint.Style.FILL
-            }
             canvas.drawCircle(cx, cy, miniRadius, miniPaint)
-
-            Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#66FFFFFF")
-                style = Paint.Style.STROKE
-                strokeWidth = 1f
-                canvas.drawCircle(cx, cy, miniRadius, this)
-            }
+            canvas.drawCircle(cx, cy, miniRadius, miniBorderPaint)
         } else {
             // Normal mode: gradient background (same look as old mini mode)
             val alpha = 220
@@ -113,13 +116,8 @@ class FloatingBallView @JvmOverloads constructor(
             canvas.drawCircle(cx, cy, radius, backgroundPaint)
 
             // Small dot icon
-            val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.WHITE
-                this.alpha = alpha
-                textSize = radius * 0.9f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.CENTER
-            }
+            dotPaint.alpha = alpha
+            dotPaint.textSize = radius * 0.9f
             canvas.drawText("✦", cx, cy + radius * 0.3f, dotPaint)
         }
     }

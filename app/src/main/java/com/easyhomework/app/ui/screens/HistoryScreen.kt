@@ -38,11 +38,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.QueryHistory
+import com.easyhomework.app.model.QueryHistorySummary
 import com.easyhomework.app.ui.components.ConfirmDialog
 import com.easyhomework.app.viewmodel.HistoryViewModel
 import android.graphics.BitmapFactory
@@ -67,8 +68,9 @@ fun HistoryScreen(
     viewModel: HistoryViewModel,
     onNavigateBack: () -> Unit,
 ) {
-    val historyList by viewModel.historyList.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
+    val historyList by viewModel.historyList.collectAsStateWithLifecycle()
+    val expandedHistory by viewModel.expandedHistory.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     var showClearDialog by remember { mutableStateOf(false) }
     var expandedItemId by remember { mutableStateOf<Long?>(null) }
 
@@ -167,9 +169,15 @@ fun HistoryScreen(
                 items(historyList, key = { it.id }) { history ->
                     HistoryItem(
                         history = history,
+                        detail = expandedHistory[history.id],
                         isExpanded = expandedItemId == history.id,
                         onToggleExpand = {
-                            expandedItemId = if (expandedItemId == history.id) null else history.id
+                            expandedItemId = if (expandedItemId == history.id) {
+                                null
+                            } else {
+                                viewModel.loadHistoryDetail(history.id)
+                                history.id
+                            }
                         },
                         onDelete = { viewModel.deleteHistory(history) },
                     )
@@ -181,12 +189,14 @@ fun HistoryScreen(
 
 @Composable
 fun HistoryItem(
-    history: QueryHistory,
+    history: QueryHistorySummary,
+    detail: QueryHistory?,
     isExpanded: Boolean,
     onToggleExpand: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val dateFormat = remember { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()) }
+    val conversationCount = detail?.conversations?.count { it.role == ChatMessage.ROLE_USER }
 
     Card(
         modifier = Modifier
@@ -216,7 +226,7 @@ fun HistoryItem(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            "${history.conversations.count { it.role == ChatMessage.ROLE_USER }} 轮对话",
+                            conversationCount?.let { "$it 轮对话" } ?: "点击展开查看对话",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -244,42 +254,50 @@ fun HistoryItem(
                 ScreenshotPreview(history.screenshotPath)
                 Spacer(modifier = Modifier.height(12.dp))
 
-                history.conversations
-                    .filter { it.role != ChatMessage.ROLE_SYSTEM }
-                    .forEach { message ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                        ) {
-                            Icon(
-                                imageVector = if (message.role == ChatMessage.ROLE_USER) {
-                                    Icons.AutoMirrored.Filled.Help
-                                } else {
-                                    Icons.Filled.SmartToy
-                                },
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = if (message.role == ChatMessage.ROLE_USER) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = message.content,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (message.role == ChatMessage.ROLE_USER) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                maxLines = if (message.role == ChatMessage.ROLE_USER) 3 else 10,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                if (detail == null) {
+                    Text(
+                        "正在加载对话详情...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    detail.conversations
+                        .filter { it.role != ChatMessage.ROLE_SYSTEM }
+                        .forEach { message ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                            ) {
+                                Icon(
+                                    imageVector = if (message.role == ChatMessage.ROLE_USER) {
+                                        Icons.AutoMirrored.Filled.Help
+                                    } else {
+                                        Icons.Filled.SmartToy
+                                    },
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (message.role == ChatMessage.ROLE_USER) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = message.content,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (message.role == ChatMessage.ROLE_USER) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    maxLines = if (message.role == ChatMessage.ROLE_USER) 3 else 10,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
-                    }
+                }
             }
         }
     }

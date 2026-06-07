@@ -68,7 +68,6 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,6 +84,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.ThinkingDepth
@@ -104,13 +104,13 @@ fun SettingsScreen(
     onNavigateToHistory: () -> Unit,
     onResyncState: () -> Unit = {},
 ) {
-    val config by viewModel.config.collectAsState()
-    val providerConfigs by viewModel.providerConfigs.collectAsState()
-    val activeProviderId by viewModel.activeProviderId.collectAsState()
-    val saveMessage by viewModel.saveMessage.collectAsState()
-    val availableModels by viewModel.availableModels.collectAsState()
-    val isFetchingModels by viewModel.isFetchingModels.collectAsState()
-    val autoSubmitDetectedRegion by viewModel.autoSubmitDetectedRegion.collectAsState()
+    val config by viewModel.config.collectAsStateWithLifecycle()
+    val providerConfigs by viewModel.providerConfigs.collectAsStateWithLifecycle()
+    val activeProviderId by viewModel.activeProviderId.collectAsStateWithLifecycle()
+    val saveMessage by viewModel.saveMessage.collectAsStateWithLifecycle()
+    val availableModels by viewModel.availableModels.collectAsStateWithLifecycle()
+    val isFetchingModels by viewModel.isFetchingModels.collectAsStateWithLifecycle()
+    val autoSubmitDetectedRegion by viewModel.autoSubmitDetectedRegion.collectAsStateWithLifecycle()
     var serviceEnabled by remember { mutableStateOf(isServiceRunning) }
     var showApiKey by remember { mutableStateOf(false) }
     var expandAdvanced by remember { mutableStateOf(false) }
