@@ -7,6 +7,7 @@ import androidx.security.crypto.MasterKey
 import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.LLMConfig
+import com.easyhomework.app.model.PromptTemplates
 import com.easyhomework.app.model.ThinkingDepth
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -46,7 +47,7 @@ class PreferencesManager(context: Context) {
                 "apiEndpoint" to config.apiEndpoint,
                 "apiPath" to config.apiPath,
                 "modelName" to config.modelName,
-                "systemPrompt" to config.systemPrompt,
+                "systemPrompt" to PromptTemplates.normalizedSystemPrompt(config.systemPrompt),
                 "temperature" to config.temperature.toString(),
                 "maxTokens" to config.maxTokens.toString(),
                 "stream" to config.stream.toString(),
@@ -90,7 +91,7 @@ class PreferencesManager(context: Context) {
                     apiPath = data["apiPath"] ?: "/v1/chat/completions",
                     apiKey = keyMap[data["id"]] ?: "",
                     modelName = data["modelName"] ?: "",
-                    systemPrompt = data["systemPrompt"] ?: LLMConfig().systemPrompt,
+                    systemPrompt = PromptTemplates.normalizedSystemPrompt(data["systemPrompt"] ?: ""),
                     temperature = (data["temperature"] ?: "0.7").toFloatOrNull() ?: 0.7f,
                     maxTokens = (data["maxTokens"] ?: "2048").toIntOrNull() ?: 2048,
                     stream = data["stream"]?.toBooleanStrictOrNull() ?: true,
@@ -139,7 +140,7 @@ class PreferencesManager(context: Context) {
             putString(KEY_API_ENDPOINT, config.apiEndpoint)
             putString(KEY_API_PATH, config.apiPath)
             putString(KEY_MODEL_NAME, config.modelName)
-            putString(KEY_SYSTEM_PROMPT, config.systemPrompt)
+            putString(KEY_SYSTEM_PROMPT, PromptTemplates.normalizedSystemPrompt(config.systemPrompt))
             putFloat(KEY_TEMPERATURE, config.temperature)
             putInt(KEY_MAX_TOKENS, config.maxTokens)
             putBoolean(KEY_STREAM, config.stream)
@@ -166,7 +167,9 @@ class PreferencesManager(context: Context) {
             apiPath = prefs.getString(KEY_API_PATH, defaults.apiPath) ?: defaults.apiPath,
             apiKey = encryptedPrefs.getString(KEY_API_KEY, "") ?: "",
             modelName = prefs.getString(KEY_MODEL_NAME, defaults.modelName) ?: defaults.modelName,
-            systemPrompt = prefs.getString(KEY_SYSTEM_PROMPT, defaults.systemPrompt) ?: defaults.systemPrompt,
+            systemPrompt = PromptTemplates.normalizedSystemPrompt(
+                prefs.getString(KEY_SYSTEM_PROMPT, defaults.systemPrompt) ?: defaults.systemPrompt,
+            ),
             temperature = prefs.getFloat(KEY_TEMPERATURE, defaults.temperature),
             maxTokens = prefs.getInt(KEY_MAX_TOKENS, defaults.maxTokens),
             stream = prefs.getBoolean(KEY_STREAM, defaults.stream),

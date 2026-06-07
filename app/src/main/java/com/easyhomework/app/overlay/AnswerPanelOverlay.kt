@@ -38,6 +38,7 @@ import android.widget.Toast
 import com.easyhomework.app.data.AppDatabase
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.LLMConfig
+import com.easyhomework.app.model.PromptTemplates
 import com.easyhomework.app.model.QueryHistory
 import com.easyhomework.app.network.LLMRepository
 import com.easyhomework.app.tools.ToolCall
@@ -102,7 +103,6 @@ class AnswerPanelOverlay(
     private var conversationStarted = false
 
     private companion object {
-        const val IMAGE_SOLVING_PROMPT = "请识别并解答图片中的题目，给出详细的解题步骤和最终答案。"
         const val IMAGE_USER_PLACEHOLDER = "[图片题目]"
         const val MAX_TOOL_CALL_DEPTH = 5
         const val TIMELINE_DOT_SIZE_DP = 18f
@@ -515,17 +515,14 @@ class AnswerPanelOverlay(
         val isVisionMode = sendDirectImage && config.supportsVisionInput()
 
         if (isVisionMode) {
-            val requestText = if (recognizedText.isNotBlank()) {
-                recognizedText
-            } else {
-                IMAGE_SOLVING_PROMPT
-            }
+            val requestText = PromptTemplates.buildImageQuestionPrompt(recognizedText)
             val displayText = recognizedText.ifBlank { IMAGE_USER_PLACEHOLDER }
             val userMessage = ChatMessage.userWithImage(requestText, screenshotBitmap)
             messages.add(userMessage)
             addUserBubbleWithImage(displayText)
         } else {
-            val userMessage = ChatMessage.user(recognizedText)
+            val requestText = PromptTemplates.buildOcrQuestionPrompt(recognizedText)
+            val userMessage = ChatMessage.user(requestText)
             messages.add(userMessage)
             addUserBubble(recognizedText)
         }
@@ -1574,15 +1571,13 @@ class AnswerPanelOverlay(
                     previewSource
                 }
 
-                val historyMessages = messages.map { message ->
-                    if (sendDirectImage &&
-                        message.role == ChatMessage.ROLE_USER &&
-                        message.imageBitmap != null &&
-                        message.content == IMAGE_SOLVING_PROMPT
-                    ) {
-                        message.copy(content = IMAGE_USER_PLACEHOLDER, imageBitmap = null)
-                    } else {
-                        message
+                val historyMessages = messages.mapIndexed { index, message ->
+                    when {
+                        sendDirectImage && message.role == ChatMessage.ROLE_USER && message.imageBitmap != null ->
+                            message.copy(content = IMAGE_USER_PLACEHOLDER, imageBitmap = null)
+                        !sendDirectImage && index == 0 && message.role == ChatMessage.ROLE_USER ->
+                            message.copy(content = recognizedText)
+                        else -> message
                     }
                 }
 

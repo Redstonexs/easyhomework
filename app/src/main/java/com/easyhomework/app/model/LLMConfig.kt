@@ -62,7 +62,7 @@ data class LLMConfig(
     val apiPath: String = "/v1/chat/completions",
     val apiKey: String = "",
     val modelName: String = "gpt-4o",
-    val systemPrompt: String = "你是一个专业的解题助手。请仔细阅读用户提供的题目，给出详细的解题步骤和最终答案。如果是数学题，请展示完整的计算过程。如果是选择题，请分析每个选项并给出正确答案。",
+    val systemPrompt: String = PromptTemplates.DEFAULT_SYSTEM_PROMPT,
     val temperature: Float = 0.7f,
     val maxTokens: Int = 2048,
     val stream: Boolean = true,

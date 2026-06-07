@@ -87,6 +87,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.CapabilitySource
+import com.easyhomework.app.model.PromptTemplates
 import com.easyhomework.app.model.ThinkingDepth
 import com.easyhomework.app.service.FloatingBallService
 import com.easyhomework.app.ui.theme.AccentCyan
@@ -636,6 +637,18 @@ fun SettingsScreen(
                         maxLines = 6,
                         label = { Text("自定义提示词") },
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.updateConfig(
+                                config.copy(systemPrompt = PromptTemplates.DEFAULT_SYSTEM_PROMPT),
+                            )
+                        },
+                    ) {
+                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("恢复默认")
+                    }
                 }
             }
 

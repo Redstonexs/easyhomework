@@ -7,6 +7,7 @@ import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.model.ModelInfo
+import com.easyhomework.app.model.PromptTemplates
 import com.easyhomework.app.model.ThinkingDepth
 import com.easyhomework.app.tools.ToolCall
 import com.easyhomework.app.tools.ToolDefinition
@@ -847,12 +848,10 @@ class LLMRepository {
     }
 
     private fun buildEffectiveSystemPrompt(config: LLMConfig, tools: List<ToolDefinition>?): String {
-        return listOf(
-            config.systemPrompt.trim(),
-            TOOL_USAGE_POLICY.takeIf { !tools.isNullOrEmpty() },
-        ).filterNotNull()
-            .filter { it.isNotBlank() }
-            .joinToString("\n\n")
+        return PromptTemplates.buildEffectiveSystemPrompt(
+            configuredPrompt = config.systemPrompt,
+            includeToolPolicy = !tools.isNullOrEmpty(),
+        )
     }
 
     private fun buildOpenAIBody(
@@ -1135,15 +1134,6 @@ class LLMRepository {
         )
         val FUNCTION_CALLING_CAPABILITY_FIELDS = listOf("function_calling", "tool_use")
         val FUNCTION_CALLING_FEATURE_TOKENS = setOf("function_calling", "tool_use", "tools")
-        val TOOL_USAGE_POLICY = """
-            工具调用规则：
-            - 优先直接解答；只有工具能提供必要且更可靠的信息时才调用。
-            - 用户明确询问今天日期、当前日期、现在几点、当前时间、星期几或实时 UNIX 时间戳时，必须调用 get_current_datetime 后再回答。
-            - 需要精确数值计算、单位换算或多步程序化验证时，分别使用 calculate、convert_unit 或 run_javascript。
-            - 不要为了展示过程、普通推理、概念解释或可以直接完成的小计算调用工具。
-            - 每次调用前确认题目确实需要该工具的能力；不确定、无关或题干信息已足够时不要调用。
-            - 工具返回后应结合结果给出最终答案，不要重复调用相同工具。
-        """.trimIndent()
         val FUNCTION_CALLING_MODEL_PATTERNS = listOf(
             "gpt-4",
             "gpt-3.5-turbo",
