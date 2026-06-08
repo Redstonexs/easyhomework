@@ -8,6 +8,7 @@ import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.model.ModelInfo
 import com.easyhomework.app.network.LLMRepository
+import com.easyhomework.app.util.CrashReporter
 import com.easyhomework.app.util.PreferencesManager
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +41,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val _autoSubmitDetectedRegion = MutableStateFlow(preferencesManager.autoSubmitDetectedRegion)
     val autoSubmitDetectedRegion: StateFlow<Boolean> = _autoSubmitDetectedRegion.asStateFlow()
+
+    private val _latestCrashReport = MutableStateFlow(CrashReporter.readLatestCrash(application))
+    val latestCrashReport: StateFlow<String?> = _latestCrashReport.asStateFlow()
+
+    val latestCrashPath: String = CrashReporter.latestCrashPath(application)
 
     init {
         // If no providers exist, create a default one
@@ -159,6 +165,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun clearSaveMessage() {
         _saveMessage.value = null
+    }
+
+    fun clearCrashReport() {
+        CrashReporter.clearLatestCrash(getApplication())
+        _latestCrashReport.value = null
+        _saveMessage.value = "诊断日志已清除"
+    }
+
+    fun notifyCrashReportCopied() {
+        _saveMessage.value = "诊断日志已复制"
     }
 
     fun validateConfig(): String? {

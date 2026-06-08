@@ -78,6 +78,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -113,6 +115,8 @@ fun SettingsScreen(
     val availableModels by viewModel.availableModels.collectAsStateWithLifecycle()
     val isFetchingModels by viewModel.isFetchingModels.collectAsStateWithLifecycle()
     val autoSubmitDetectedRegion by viewModel.autoSubmitDetectedRegion.collectAsStateWithLifecycle()
+    val latestCrashReport by viewModel.latestCrashReport.collectAsStateWithLifecycle()
+    val clipboardManager = LocalClipboardManager.current
 
     var serviceEnabled by remember { mutableStateOf(isServiceRunning) }
     var showApiKey by remember { mutableStateOf(false) }
@@ -190,6 +194,16 @@ fun SettingsScreen(
                 onMiniBallChanged = { viewModel.updateConfig(config.copy(miniBall = it)) },
                 onAutoSubmitChanged = viewModel::updateAutoSubmitDetectedRegion,
                 onNavigateToHistory = onNavigateToHistory,
+            )
+
+            DiagnosticSection(
+                latestCrashReport = latestCrashReport,
+                latestCrashPath = viewModel.latestCrashPath,
+                onCopyCrashReport = { report ->
+                    clipboardManager.setText(AnnotatedString(report))
+                    viewModel.notifyCrashReportCopied()
+                },
+                onClearCrashReport = viewModel::clearCrashReport,
             )
 
             CollapsibleSettingsSection(
@@ -636,6 +650,42 @@ private fun UsageSection(
                 iconTint = AccentCyan,
                 onClick = onNavigateToHistory,
             )
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticSection(
+    latestCrashReport: String?,
+    latestCrashPath: String,
+    onCopyCrashReport: (String) -> Unit,
+    onClearCrashReport: () -> Unit,
+) {
+    val report = latestCrashReport ?: return
+    SettingsCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            SectionTitle(title = "诊断日志", subtitle = "检测到上次异常退出，可复制完整崩溃栈")
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                latestCrashPath,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { onCopyCrashReport(report) },
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Text("复制日志")
+                }
+                OutlinedButton(
+                    onClick = onClearCrashReport,
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Text("清除")
+                }
+            }
         }
     }
 }

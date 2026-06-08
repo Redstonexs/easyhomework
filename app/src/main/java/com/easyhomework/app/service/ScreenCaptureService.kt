@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
@@ -73,12 +74,17 @@ class ScreenCaptureService : Service() {
             }
         }
 
-        fun start(context: Context, resultCode: Int, data: Intent) {
+        fun start(context: Context, resultCode: Int, data: Intent): String? {
             val intent = Intent(context, ScreenCaptureService::class.java).apply {
                 putExtra("resultCode", resultCode)
                 putExtra("resultData", data)
             }
-            context.startForegroundService(intent)
+            return try {
+                context.startForegroundService(intent)
+                null
+            } catch (e: Exception) {
+                "截图服务启动失败: ${e.message ?: e.javaClass.simpleName}"
+            }
         }
 
         fun stop(context: Context) {
@@ -112,7 +118,12 @@ class ScreenCaptureService : Service() {
             screenHeight = metrics.heightPixels
         }
 
-        startForeground(EasyHomeworkApp.NOTIFICATION_ID_SCREEN_CAPTURE, createNotification())
+        try {
+            startForegroundCompat()
+        } catch (e: Exception) {
+            notifyScreenshotFailure("截图服务启动失败: ${e.message ?: e.javaClass.simpleName}")
+            stopSelf()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -291,6 +302,19 @@ class ScreenCaptureService : Service() {
         mediaProjection = null
     }
 
+    private fun startForegroundCompat() {
+        val notification = createNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                EasyHomeworkApp.NOTIFICATION_ID_SCREEN_CAPTURE,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
+            )
+        } else {
+            startForeground(EasyHomeworkApp.NOTIFICATION_ID_SCREEN_CAPTURE, notification)
+        }
+    }
+
     private fun createNotification(): Notification {
         val openIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
@@ -309,5 +333,4 @@ class ScreenCaptureService : Service() {
             .setSilent(true)
             .build()
     }
-
 }

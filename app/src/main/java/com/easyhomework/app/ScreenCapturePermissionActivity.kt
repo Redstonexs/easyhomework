@@ -5,6 +5,7 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import android.os.Handler
+import android.widget.Toast
 import com.easyhomework.app.service.FloatingBallService
 import com.easyhomework.app.service.ScreenCaptureService
 
@@ -34,7 +35,13 @@ class ScreenCapturePermissionActivity : Activity() {
         if (requestCode == REQUEST_CODE_MEDIA_PROJECTION) {
             if (resultCode == RESULT_OK && data != null) {
                 // Start the capture service with the permission
-                ScreenCaptureService.start(this, resultCode, data)
+                val error = ScreenCaptureService.start(this, resultCode, data)
+                if (error != null) {
+                    Toast.makeText(this, error, Toast.LENGTH_LONG).show()
+                    FloatingBallService.getInstance()?.showFloatingBallAgain()
+                    finish()
+                    return
+                }
 
                 // Hide the floating ball and wait for capture
                 FloatingBallService.getInstance()?.hideFloatingBall()

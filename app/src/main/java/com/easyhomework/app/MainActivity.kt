@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -12,7 +14,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -22,6 +30,7 @@ import com.easyhomework.app.service.FloatingBallService
 import com.easyhomework.app.ui.screens.HistoryScreen
 import com.easyhomework.app.ui.screens.SettingsScreen
 import com.easyhomework.app.ui.theme.EasyHomeworkTheme
+import com.easyhomework.app.util.CrashReporter
 import com.easyhomework.app.util.PreferencesManager
 import com.easyhomework.app.viewmodel.HistoryViewModel
 import com.easyhomework.app.viewmodel.SettingsViewModel
@@ -36,6 +45,7 @@ class MainActivity : ComponentActivity() {
         if (Settings.canDrawOverlays(this)) {
             startFloatingBallService()
         } else {
+            preferencesManager.isFloatingBallEnabled = false
             Toast.makeText(this, "需要悬浮窗权限才能使用搜题功能", Toast.LENGTH_LONG).show()
         }
     }
@@ -43,30 +53,25 @@ class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { _ ->
-        // Notification permission is optional, proceed anyway
+        // Notification permission is optional, proceed anyway.
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        CrashReporter.setStage(this, "main_activity_on_create")
         super.onCreate(savedInstanceState)
         preferencesManager = PreferencesManager(this)
+        syncStaleFloatingBallState()
 
-        // Request notification permission on Android 13+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
-
+        CrashReporter.setStage(this, "main_activity_set_content")
         setContent {
             EasyHomeworkTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    // Use preferences as source of truth, updated by service lifecycle
                     var serviceEnabled by remember { mutableStateOf(preferencesManager.isFloatingBallEnabled) }
 
-                    // Re-check state on each recomposition when returning to this screen
                     LaunchedEffect(Unit) {
-                        // Initial sync
                         serviceEnabled = preferencesManager.isFloatingBallEnabled
                     }
 
@@ -83,24 +88,27 @@ class MainActivity : ComponentActivity() {
                         onToggleService = { enabled ->
                             serviceEnabled = enabled
                             if (enabled) {
-                                requestOverlayPermissionAndStart()
+                                if (!requestOverlayPermissionAndStart()) {
+                                    serviceEnabled = false
+                                }
                             } else {
                                 stopFloatingBallService()
                             }
                         },
                         isServiceRunning = serviceEnabled,
                         onResyncState = {
-                            // Called when returning to settings screen to pick up external changes
                             serviceEnabled = preferencesManager.isFloatingBallEnabled
                         },
                     )
                 }
             }
         }
+        requestNotificationPermissionAfterFirstDraw()
+        CrashReporter.setStage(this, "main_activity_ready")
     }
 
-    private fun requestOverlayPermissionAndStart() {
-        if (Settings.canDrawOverlays(this)) {
+    private fun requestOverlayPermissionAndStart(): Boolean {
+        return if (Settings.canDrawOverlays(this)) {
             startFloatingBallService()
         } else {
             val intent = Intent(
@@ -108,19 +116,27 @@ class MainActivity : ComponentActivity() {
                 Uri.parse("package:$packageName"),
             )
             overlayPermissionLauncher.launch(intent)
+            false
         }
     }
 
-    private fun startFloatingBallService() {
+    private fun startFloatingBallService(): Boolean {
         validateConfigBeforeStart()?.let { message ->
             preferencesManager.isFloatingBallEnabled = false
             Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-            return
+            return false
         }
 
         preferencesManager.isFloatingBallEnabled = true
-        FloatingBallService.start(this)
-        Toast.makeText(this, "悬浮球已开启", Toast.LENGTH_SHORT).show()
+        val error = FloatingBallService.start(this)
+        return if (error == null) {
+            Toast.makeText(this, "悬浮球已开启", Toast.LENGTH_SHORT).show()
+            true
+        } else {
+            preferencesManager.isFloatingBallEnabled = false
+            Toast.makeText(this, error, Toast.LENGTH_LONG).show()
+            false
+        }
     }
 
     private fun validateConfigBeforeStart(): String? {
@@ -137,6 +153,21 @@ class MainActivity : ComponentActivity() {
         preferencesManager.isFloatingBallEnabled = false
         FloatingBallService.stop(this)
         Toast.makeText(this, "悬浮球已关闭", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun syncStaleFloatingBallState() {
+        if (preferencesManager.isFloatingBallEnabled && FloatingBallService.getInstance() == null) {
+            preferencesManager.isFloatingBallEnabled = false
+        }
+    }
+
+    private fun requestNotificationPermissionAfterFirstDraw() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (!isFinishing && !isDestroyed) {
+                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }, 350L)
     }
 }
 

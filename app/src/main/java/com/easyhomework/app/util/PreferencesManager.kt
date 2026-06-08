@@ -21,7 +21,7 @@ import java.security.KeyStore
 class PreferencesManager(context: Context) {
 
     private val appContext = context.applicationContext
-    private var encryptedPrefs: SharedPreferences? = openEncryptedPreferences()
+    private var encryptedPrefs: SharedPreferences? = null
 
     private val prefs: SharedPreferences =
         appContext.getSharedPreferences("easyhomework_prefs", Context.MODE_PRIVATE)

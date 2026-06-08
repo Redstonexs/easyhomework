@@ -6,8 +6,10 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -80,9 +82,14 @@ class FloatingBallService : Service() {
 
         fun getInstance(): FloatingBallService? = instance
 
-        fun start(context: Context) {
+        fun start(context: Context): String? {
             val intent = Intent(context, FloatingBallService::class.java)
-            context.startForegroundService(intent)
+            return try {
+                context.startForegroundService(intent)
+                null
+            } catch (e: Exception) {
+                "悬浮球启动失败: ${e.message ?: e.javaClass.simpleName}"
+            }
         }
 
         fun stop(context: Context) {
@@ -98,8 +105,15 @@ class FloatingBallService : Service() {
         instance = this
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         preferencesManager = PreferencesManager(this)
-        startForeground(EasyHomeworkApp.NOTIFICATION_ID_FLOATING_BALL, createNotification())
-        showFloatingBall()
+        try {
+            startForegroundCompat()
+            showFloatingBall()
+        } catch (e: Exception) {
+            preferencesManager.isFloatingBallEnabled = false
+            Toast.makeText(this, "悬浮球启动失败: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            removeFloatingBall()
+            stopSelf()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -177,7 +191,15 @@ class FloatingBallService : Service() {
             }
         }
 
-        windowManager.addView(floatingBallView, ballParams)
+        try {
+            windowManager.addView(floatingBallView, ballParams)
+        } catch (e: Exception) {
+            floatingBallView = null
+            preferencesManager.isFloatingBallEnabled = false
+            Toast.makeText(this, "悬浮窗显示失败: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            stopSelf()
+            return
+        }
 
         // Entrance animation
         floatingBallView?.alpha = 0f
@@ -356,7 +378,12 @@ class FloatingBallService : Service() {
             val intent = Intent(this, ScreenCapturePermissionActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            startActivity(intent)
+            try {
+                startActivity(intent)
+            } catch (e: Exception) {
+                awaitingScreenshotResult = false
+                Toast.makeText(this, "截图授权打开失败: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -388,7 +415,14 @@ class FloatingBallService : Service() {
             PixelFormat.TRANSLUCENT,
         )
 
-        windowManager.addView(regionSelector, params)
+        try {
+            windowManager.addView(regionSelector, params)
+        } catch (e: Exception) {
+            regionSelector?.release()
+            regionSelector = null
+            Toast.makeText(this, "选区打开失败: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_LONG).show()
+            showFloatingBallAgain()
+        }
     }
 
     private fun removeRegionSelector() {
@@ -455,6 +489,19 @@ class FloatingBallService : Service() {
     }
 
     // ---- Notification ----
+
+    private fun startForegroundCompat() {
+        val notification = createNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                EasyHomeworkApp.NOTIFICATION_ID_FLOATING_BALL,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+            )
+        } else {
+            startForeground(EasyHomeworkApp.NOTIFICATION_ID_FLOATING_BALL, notification)
+        }
+    }
 
     private fun createNotification(): Notification {
         val openIntent = Intent(this, MainActivity::class.java)

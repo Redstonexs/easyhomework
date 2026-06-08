@@ -3,6 +3,7 @@ package com.easyhomework.app
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import com.easyhomework.app.util.CrashReporter
 
 class EasyHomeworkApp : Application() {
 
@@ -14,8 +15,11 @@ class EasyHomeworkApp : Application() {
     }
 
     override fun onCreate() {
+        CrashReporter.install(this)
+        CrashReporter.setStage(this, "application_on_create")
         super.onCreate()
         createNotificationChannels()
+        CrashReporter.setStage(this, "application_ready")
     }
 
     private fun createNotificationChannels() {
