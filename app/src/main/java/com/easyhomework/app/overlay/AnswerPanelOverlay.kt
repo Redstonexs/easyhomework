@@ -1255,19 +1255,27 @@ class AnswerPanelOverlay(
     }
 
     private fun createMarkwon(): Markwon {
-        return Markwon.builder(serviceContext)
+        val builder = Markwon.builder(serviceContext)
             .usePlugin(HtmlPlugin.create())
             .usePlugin(StrikethroughPlugin.create())
             .usePlugin(TablePlugin.create(serviceContext))
             .usePlugin(TaskListPlugin.create(serviceContext))
             .usePlugin(LinkifyPlugin.create())
             .usePlugin(MarkwonInlineParserPlugin.create())
-            .usePlugin(
+        runCatching {
+            builder.usePlugin(
                 JLatexMathPlugin.create(sp(14f)) { builder ->
                     builder.inlinesEnabled(true)
                 },
             )
-            .build()
+        }.onFailure { error ->
+            Toast.makeText(
+                serviceContext,
+                "公式渲染初始化失败，已降级为普通文本: ${error.message ?: error.javaClass.simpleName}",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+        return builder.build()
     }
 
     private fun renderMarkdown(textView: TextView, markdown: String, showCursor: Boolean = false) {

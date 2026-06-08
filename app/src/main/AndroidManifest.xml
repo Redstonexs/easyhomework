@@ -22,9 +22,40 @@
         android:theme="@style/Theme.EasyHomework"
         tools:targetApi="34">
 
-        <!-- Main Activity -->
+        <!-- Install crash reporter before third-party startup providers. -->
+        <provider
+            android:name=".CrashInitProvider"
+            android:authorities="${applicationId}.crashinitprovider"
+            android:exported="false"
+            android:initOrder="1000" />
+
+        <!-- Remove high-risk startup providers; initialize these libraries lazily on first use. -->
+        <provider
+            android:name="com.google.mlkit.common.internal.MlKitInitProvider"
+            android:authorities="${applicationId}.mlkitinitprovider"
+            tools:node="remove" />
+
+        <provider
+            android:name="ru.noties.jlatexmath.JLatexMathInitProvider"
+            android:authorities="${applicationId}.jlatexmathinitprovider"
+            tools:node="remove" />
+
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+                tools:node="remove" />
+            <meta-data
+                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+                tools:node="remove" />
+        </provider>
+
+        <!-- Safe launcher: no Compose/ViewModel/Room/ML Kit/Markwon startup path. -->
         <activity
-            android:name=".MainActivity"
+            android:name=".SafeLaunchActivity"
             android:exported="true"
             android:theme="@style/Theme.EasyHomework">
             <intent-filter>
@@ -32,6 +63,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Main Activity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:theme="@style/Theme.EasyHomework" />
 
         <!-- Screen Capture Permission Activity (transparent) -->
         <activity

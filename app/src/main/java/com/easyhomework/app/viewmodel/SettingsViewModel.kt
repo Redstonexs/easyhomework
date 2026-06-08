@@ -11,23 +11,29 @@ import com.easyhomework.app.network.LLMRepository
 import com.easyhomework.app.util.CrashReporter
 import com.easyhomework.app.util.PreferencesManager
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val preferencesManager = PreferencesManager(application)
     private val llmRepository = LLMRepository()
+    private val defaultConfig = LLMConfig(
+        id = UUID.randomUUID().toString(),
+        name = "默认配置",
+    )
 
-    private val _config = MutableStateFlow(preferencesManager.getActiveConfig())
+    private val _config = MutableStateFlow(defaultConfig)
     val config: StateFlow<LLMConfig> = _config.asStateFlow()
 
-    private val _providerConfigs = MutableStateFlow(preferencesManager.loadProviderConfigs())
+    private val _providerConfigs = MutableStateFlow(listOf(defaultConfig))
     val providerConfigs: StateFlow<List<LLMConfig>> = _providerConfigs.asStateFlow()
 
-    private val _activeProviderId = MutableStateFlow(preferencesManager.activeProviderId)
+    private val _activeProviderId = MutableStateFlow(defaultConfig.id)
     val activeProviderId: StateFlow<String> = _activeProviderId.asStateFlow()
 
     private val _saveMessage = MutableStateFlow<String?>(null)
@@ -39,7 +45,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _isFetchingModels = MutableStateFlow(false)
     val isFetchingModels: StateFlow<Boolean> = _isFetchingModels.asStateFlow()
 
-    private val _autoSubmitDetectedRegion = MutableStateFlow(preferencesManager.autoSubmitDetectedRegion)
+    private val _autoSubmitDetectedRegion = MutableStateFlow(true)
     val autoSubmitDetectedRegion: StateFlow<Boolean> = _autoSubmitDetectedRegion.asStateFlow()
 
     private val _latestCrashReport = MutableStateFlow(CrashReporter.readLatestCrash(application))
@@ -48,15 +54,35 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val latestCrashPath: String = CrashReporter.latestCrashPath(application)
 
     init {
-        // If no providers exist, create a default one
-        if (_providerConfigs.value.isEmpty()) {
-            val defaultConfig = LLMConfig(
-                id = UUID.randomUUID().toString(),
-                name = "默认配置",
-            )
-            _providerConfigs.value = listOf(defaultConfig)
-            _activeProviderId.value = defaultConfig.id
-            _config.value = defaultConfig
+        loadPreferences()
+    }
+
+    private fun loadPreferences() {
+        viewModelScope.launch {
+            val snapshot = withContext(Dispatchers.IO) {
+                runCatching {
+                    val configs = preferencesManager.loadProviderConfigs().ifEmpty { listOf(defaultConfig) }
+                    val activeId = preferencesManager.activeProviderId
+                    val activeConfig = configs.find { it.id == activeId } ?: configs.first()
+                    PreferencesSnapshot(
+                        config = activeConfig,
+                        providerConfigs = configs,
+                        activeProviderId = activeConfig.id,
+                        autoSubmitDetectedRegion = preferencesManager.autoSubmitDetectedRegion,
+                    )
+                }
+            }
+
+            snapshot
+                .onSuccess { loaded ->
+                    _config.value = loaded.config
+                    _providerConfigs.value = loaded.providerConfigs
+                    _activeProviderId.value = loaded.activeProviderId
+                    _autoSubmitDetectedRegion.value = loaded.autoSubmitDetectedRegion
+                }
+                .onFailure { error ->
+                    _saveMessage.value = "配置读取失败，已进入安全默认状态: ${error.message ?: error.javaClass.simpleName}"
+                }
         }
     }
 
@@ -116,7 +142,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _providerConfigs.value = updatedList
         preferencesManager.saveProviderConfigs(updatedList)
 
-        // If deleted the active one, switch to first
         if (_activeProviderId.value == id) {
             val first = updatedList.firstOrNull()
             if (first != null) {
@@ -151,8 +176,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _providerConfigs.value = updatedList
         preferencesManager.saveProviderConfigs(updatedList)
         preferencesManager.activeProviderId = currentConfig.id
-
-        // Also save miniBall globally
         preferencesManager.miniBall = currentConfig.miniBall
 
         _saveMessage.value = "设置已保存"
@@ -239,4 +262,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             supportsFunctionCalling = LLMConfig.modelSupportsFunctionCalling(apiType, modelName),
         )
     }
+
+    private data class PreferencesSnapshot(
+        val config: LLMConfig,
+        val providerConfigs: List<LLMConfig>,
+        val activeProviderId: String,
+        val autoSubmitDetectedRegion: Boolean,
+    )
 }

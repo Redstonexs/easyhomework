@@ -18,7 +18,9 @@ class EasyHomeworkApp : Application() {
         CrashReporter.install(this)
         CrashReporter.setStage(this, "application_on_create")
         super.onCreate()
-        createNotificationChannels()
+        runCatching {
+            createNotificationChannels()
+        }
         CrashReporter.setStage(this, "application_ready")
     }
 

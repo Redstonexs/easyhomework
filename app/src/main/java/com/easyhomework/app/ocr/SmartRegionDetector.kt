@@ -18,9 +18,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  */
 class SmartRegionDetector {
 
-    private val recognizer = TextRecognition.getClient(
-        ChineseTextRecognizerOptions.Builder().build(),
-    )
+    private var recognizer: com.google.mlkit.vision.text.TextRecognizer? = null
 
     private companion object {
         const val NO_TEXT_CONFIDENCE = 0.25f
@@ -182,6 +180,10 @@ class SmartRegionDetector {
     private suspend fun detectTextBlocks(
         image: InputImage,
     ): List<TextBlockInfo> = suspendCancellableCoroutine { continuation ->
+        val recognizer = getRecognizer().getOrElse { error ->
+            continuation.resumeWithException(error)
+            return@suspendCancellableCoroutine
+        }
         recognizer.process(image)
             .addOnSuccessListener { visionText ->
                 val blocks = visionText.textBlocks.mapNotNull { block ->
@@ -404,7 +406,16 @@ class SmartRegionDetector {
     }
 
     fun close() {
-        recognizer.close()
+        recognizer?.close()
+        recognizer = null
+    }
+
+    private fun getRecognizer(): Result<com.google.mlkit.vision.text.TextRecognizer> {
+        return runCatching {
+            recognizer ?: TextRecognition.getClient(
+                ChineseTextRecognizerOptions.Builder().build(),
+            ).also { recognizer = it }
+        }
     }
 
     data class TextBlockInfo(

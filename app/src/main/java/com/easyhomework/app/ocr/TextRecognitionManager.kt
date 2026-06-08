@@ -17,13 +17,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  */
 class TextRecognitionManager {
 
-    // Chinese text recognizer (also handles Latin/English text)
-    private val chineseRecognizer: TextRecognizer =
-        TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
-
-    // Latin text recognizer as fallback
-    private val latinRecognizer: TextRecognizer =
-        TextRecognition.getClient(TextRecognizerOptions.Builder().build())
+    private var chineseRecognizer: TextRecognizer? = null
+    private var latinRecognizer: TextRecognizer? = null
 
     /**
      * Recognize text from a bitmap image.
@@ -32,13 +27,22 @@ class TextRecognitionManager {
     suspend fun recognizeText(bitmap: Bitmap): RecognitionResult {
         return try {
             val inputImage = InputImage.fromBitmap(bitmap, 0)
+            val chineseRecognizer = getChineseRecognizer().getOrElse { error ->
+                return RecognitionResult(
+                    text = "",
+                    confidence = 0f,
+                    error = "OCR 初始化失败: ${error.message ?: error.javaClass.simpleName}",
+                )
+            }
             val text = recognizeWithRecognizer(inputImage, chineseRecognizer)
 
             // If Chinese recognizer finds very little text, try Latin as backup
             if (text.text.length < 5) {
-                val latinText = recognizeWithRecognizer(inputImage, latinRecognizer)
-                if (latinText.text.length > text.text.length) {
-                    return latinText
+                getLatinRecognizer().getOrNull()?.let { latinRecognizer ->
+                    val latinText = recognizeWithRecognizer(inputImage, latinRecognizer)
+                    if (latinText.text.length > text.text.length) {
+                        return latinText
+                    }
                 }
             }
 
@@ -51,6 +55,22 @@ class TextRecognitionManager {
                 confidence = 0f,
                 error = e.message,
             )
+        }
+    }
+
+    private fun getChineseRecognizer(): Result<TextRecognizer> {
+        return runCatching {
+            chineseRecognizer ?: TextRecognition.getClient(
+                ChineseTextRecognizerOptions.Builder().build(),
+            ).also { chineseRecognizer = it }
+        }
+    }
+
+    private fun getLatinRecognizer(): Result<TextRecognizer> {
+        return runCatching {
+            latinRecognizer ?: TextRecognition.getClient(
+                TextRecognizerOptions.Builder().build(),
+            ).also { latinRecognizer = it }
         }
     }
 
@@ -103,8 +123,10 @@ class TextRecognitionManager {
     }
 
     fun close() {
-        chineseRecognizer.close()
-        latinRecognizer.close()
+        chineseRecognizer?.close()
+        latinRecognizer?.close()
+        chineseRecognizer = null
+        latinRecognizer = null
     }
 
     data class RecognitionResult(
