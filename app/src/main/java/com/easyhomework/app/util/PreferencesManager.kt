@@ -2,6 +2,7 @@ package com.easyhomework.app.util
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.easyhomework.app.model.ApiType
@@ -11,6 +12,7 @@ import com.easyhomework.app.model.PromptTemplates
 import com.easyhomework.app.model.ThinkingDepth
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.security.KeyStore
 
 /**
  * Manages app preferences with encrypted storage for sensitive data like API keys.
@@ -18,22 +20,87 @@ import com.google.gson.reflect.TypeToken
  */
 class PreferencesManager(context: Context) {
 
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
-
-    private val encryptedPrefs: SharedPreferences = EncryptedSharedPreferences.create(
-        context,
-        "easyhomework_secure_prefs",
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    private val appContext = context.applicationContext
+    private var encryptedPrefs: SharedPreferences? = openEncryptedPreferences()
 
     private val prefs: SharedPreferences =
-        context.getSharedPreferences("easyhomework_prefs", Context.MODE_PRIVATE)
+        appContext.getSharedPreferences("easyhomework_prefs", Context.MODE_PRIVATE)
 
     private val gson = Gson()
+
+    private fun createEncryptedPreferences(): SharedPreferences {
+        val masterKey = MasterKey.Builder(appContext)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+
+        return EncryptedSharedPreferences.create(
+            appContext,
+            SECURE_PREFS_NAME,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
+    }
+
+    private fun openEncryptedPreferences(): SharedPreferences? {
+        return try {
+            createEncryptedPreferences()
+        } catch (first: Exception) {
+            Log.w(TAG, "Encrypted preferences could not be opened. Resetting secure storage.", first)
+            resetEncryptedPreferences()
+            try {
+                createEncryptedPreferences()
+            } catch (second: Exception) {
+                Log.e(TAG, "Encrypted preferences are unavailable after reset.", second)
+                null
+            }
+        }
+    }
+
+    private fun resetEncryptedPreferences() {
+        appContext.deleteSharedPreferences(SECURE_PREFS_NAME)
+        runCatching {
+            val keyStore = KeyStore.getInstance("AndroidKeyStore")
+            keyStore.load(null)
+            keyStore.deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
+        }.onFailure {
+            Log.w(TAG, "Could not delete Android Keystore master key.", it)
+        }
+    }
+
+    private inline fun <T> withEncryptedPreferences(
+        defaultValue: T,
+        operation: SharedPreferences.() -> T,
+    ): T {
+        val currentPrefs = encryptedPrefs ?: openEncryptedPreferences()?.also { encryptedPrefs = it }
+            ?: return defaultValue
+
+        return try {
+            currentPrefs.operation()
+        } catch (first: Exception) {
+            Log.w(TAG, "Encrypted preferences operation failed. Resetting secure storage.", first)
+            resetEncryptedPreferences()
+            val recoveredPrefs = openEncryptedPreferences()?.also { encryptedPrefs = it } ?: return defaultValue
+            try {
+                recoveredPrefs.operation()
+            } catch (second: Exception) {
+                Log.e(TAG, "Encrypted preferences operation failed after reset.", second)
+                defaultValue
+            }
+        }
+    }
+
+    private fun getEncryptedString(key: String, defaultValue: String = ""): String {
+        return withEncryptedPreferences(defaultValue) {
+            getString(key, defaultValue) ?: defaultValue
+        }
+    }
+
+    private fun putEncryptedString(key: String, value: String) {
+        withEncryptedPreferences(Unit) {
+            edit().putString(key, value).apply()
+        }
+    }
 
     // ---- Multi-Provider Config ----
 
@@ -64,7 +131,7 @@ class PreferencesManager(context: Context) {
 
         // Save API keys to encrypted prefs
         val keyMap = configs.associate { it.id to it.apiKey }
-        encryptedPrefs.edit().putString(KEY_API_KEYS_MAP, gson.toJson(keyMap)).apply()
+        putEncryptedString(KEY_API_KEYS_MAP, gson.toJson(keyMap))
 
         // Save active provider ID
         if (configs.isNotEmpty() && activeProviderId.isBlank()) {
@@ -78,7 +145,7 @@ class PreferencesManager(context: Context) {
             val type = object : TypeToken<List<Map<String, String>>>() {}.type
             val configDataList: List<Map<String, String>> = gson.fromJson(json, type)
 
-            val keysJson = encryptedPrefs.getString(KEY_API_KEYS_MAP, "{}") ?: "{}"
+            val keysJson = getEncryptedString(KEY_API_KEYS_MAP, "{}")
             val keysType = object : TypeToken<Map<String, String>>() {}.type
             val keyMap: Map<String, String> = gson.fromJson(keysJson, keysType) ?: emptyMap()
 
@@ -149,7 +216,7 @@ class PreferencesManager(context: Context) {
             putBoolean(KEY_MINI_BALL, config.miniBall)
             apply()
         }
-        encryptedPrefs.edit().putString(KEY_API_KEY, config.apiKey).apply()
+        putEncryptedString(KEY_API_KEY, config.apiKey)
     }
 
     fun getLLMConfig(): LLMConfig {
@@ -165,7 +232,7 @@ class PreferencesManager(context: Context) {
             apiType = ApiType.fromString(prefs.getString(KEY_API_TYPE, defaults.apiType.name) ?: defaults.apiType.name),
             apiEndpoint = prefs.getString(KEY_API_ENDPOINT, defaults.apiEndpoint) ?: defaults.apiEndpoint,
             apiPath = prefs.getString(KEY_API_PATH, defaults.apiPath) ?: defaults.apiPath,
-            apiKey = encryptedPrefs.getString(KEY_API_KEY, "") ?: "",
+            apiKey = getEncryptedString(KEY_API_KEY),
             modelName = prefs.getString(KEY_MODEL_NAME, defaults.modelName) ?: defaults.modelName,
             systemPrompt = PromptTemplates.normalizedSystemPrompt(
                 prefs.getString(KEY_SYSTEM_PROMPT, defaults.systemPrompt) ?: defaults.systemPrompt,
@@ -235,6 +302,9 @@ class PreferencesManager(context: Context) {
         set(value) = prefs.edit().putFloat(KEY_PANEL_HEIGHT_RATIO, value).apply()
 
     companion object {
+        private const val TAG = "PreferencesManager"
+        private const val SECURE_PREFS_NAME = "easyhomework_secure_prefs"
+
         // Legacy keys
         private const val KEY_API_TYPE = "api_type"
         private const val KEY_API_ENDPOINT = "api_endpoint"
