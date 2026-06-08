@@ -142,8 +142,8 @@ fun SettingsScreen(
         }
     }
 
-    val setupStatus = remember(config, serviceEnabled) {
-        buildSetupStatus(config = config, serviceEnabled = serviceEnabled)
+    val setupStatus = remember(config) {
+        buildSetupStatus(config = config)
     }
     val saveSettings = {
         val error = viewModel.validateConfig()
@@ -151,6 +151,10 @@ fun SettingsScreen(
         if (error == null) {
             FloatingBallService.getInstance()?.recreateFloatingBall()
         }
+    }
+    val onFloatingBallChanged = { enabled: Boolean ->
+        serviceEnabled = enabled
+        onToggleService(enabled)
     }
 
     Scaffold(
@@ -165,10 +169,15 @@ fun SettingsScreen(
         ) {
             SettingsHeader(setupStatus = setupStatus)
 
+            FloatingBallControlSection(
+                setupStatus = setupStatus,
+                serviceEnabled = serviceEnabled,
+                onServiceChanged = onFloatingBallChanged,
+            )
+
             QuickSetupSection(
                 config = config,
                 setupStatus = setupStatus,
-                serviceEnabled = serviceEnabled,
                 showApiKey = showApiKey,
                 showModelDropdown = showModelDropdown,
                 availableModels = availableModels,
@@ -181,10 +190,6 @@ fun SettingsScreen(
                     showModelDropdown = true
                 },
                 onModelDropdownChanged = { showModelDropdown = it },
-                onServiceChanged = { enabled ->
-                    serviceEnabled = enabled
-                    onToggleService(enabled)
-                },
                 onSave = saveSettings,
             )
 
@@ -323,10 +328,46 @@ private fun SettingsHeader(setupStatus: SetupStatus) {
 }
 
 @Composable
+private fun FloatingBallControlSection(
+    setupStatus: SetupStatus,
+    serviceEnabled: Boolean,
+    onServiceChanged: (Boolean) -> Unit,
+) {
+    SettingsCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            SectionTitle(
+                title = "搜题总开关",
+                subtitle = if (serviceEnabled) {
+                    "悬浮球已开启，可在任意应用中截屏搜题"
+                } else if (setupStatus.isReady) {
+                    "开启悬浮球后，即可在其他应用中截屏搜题"
+                } else {
+                    "先完成基础配置，再开启悬浮球"
+                },
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            ToggleSettingRow(
+                title = "悬浮球",
+                subtitle = if (serviceEnabled) {
+                    "全局搜题入口已启用"
+                } else {
+                    "作为应用级总开关独立控制"
+                },
+                icon = Icons.Outlined.SmartToy,
+                iconTint = if (serviceEnabled) AccentGreen else MaterialTheme.colorScheme.outline,
+                checked = serviceEnabled,
+                onCheckedChange = onServiceChanged,
+            )
+        }
+    }
+}
+
+@Composable
 private fun QuickSetupSection(
     config: LLMConfig,
     setupStatus: SetupStatus,
-    serviceEnabled: Boolean,
     showApiKey: Boolean,
     showModelDropdown: Boolean,
     availableModels: List<ModelInfo>,
@@ -336,7 +377,6 @@ private fun QuickSetupSection(
     onModelNameChanged: (String) -> Unit,
     onFetchModels: () -> Unit,
     onModelDropdownChanged: (Boolean) -> Unit,
-    onServiceChanged: (Boolean) -> Unit,
     onSave: () -> Unit,
 ) {
     SettingsCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
@@ -375,17 +415,6 @@ private fun QuickSetupSection(
             )
 
             Spacer(modifier = Modifier.height(12.dp))
-
-            ToggleSettingRow(
-                title = "悬浮球",
-                subtitle = if (serviceEnabled) "已开启，可在任意应用截屏搜题" else "开启后才能在其他应用中搜题",
-                icon = Icons.Outlined.SmartToy,
-                iconTint = if (serviceEnabled) AccentGreen else MaterialTheme.colorScheme.outline,
-                checked = serviceEnabled,
-                onCheckedChange = onServiceChanged,
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
 
             Button(
                 onClick = onSave,
@@ -1212,12 +1241,11 @@ private data class SetupStatus(
     val issues: List<String>,
 )
 
-private fun buildSetupStatus(config: LLMConfig, serviceEnabled: Boolean): SetupStatus {
+private fun buildSetupStatus(config: LLMConfig): SetupStatus {
     val issues = buildList {
         if (config.apiKey.isBlank()) add("填写 API 密钥")
         if (config.modelName.isBlank()) add("填写模型名称")
         if (config.apiEndpoint.isBlank()) add("补全 API 端点")
-        if (!serviceEnabled) add("开启悬浮球")
     }
 
     return if (issues.isEmpty()) {
