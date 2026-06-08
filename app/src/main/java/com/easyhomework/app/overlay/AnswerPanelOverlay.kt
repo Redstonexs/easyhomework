@@ -44,6 +44,7 @@ import com.easyhomework.app.network.LLMRepository
 import com.easyhomework.app.tools.ToolCall
 import com.easyhomework.app.tools.ToolExecutor
 import com.easyhomework.app.tools.ToolRegistry
+import com.easyhomework.app.ui.theme.neutralPalette
 import com.easyhomework.app.util.PreferencesManager
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.latex.JLatexMathPlugin
@@ -122,22 +123,24 @@ class AnswerPanelOverlay(
     private lateinit var sendButton: ImageView
     private lateinit var dragHandle: View
 
-    // M3 Dark Theme Color Palette
-    private val bgColor = Color.parseColor("#E6000000") // scrim 90%
-    private val surfaceColor = Color.parseColor("#1A1A2E") // surface
-    private val surfaceContainerColor = Color.parseColor("#1E1E32") // surfaceContainer
-    private val surfaceContainerHighColor = Color.parseColor("#252540") // surfaceContainerHigh
-    private val surfaceContainerHighestColor = Color.parseColor("#2A2A48") // surfaceContainerHighest
-    private val onSurfaceColor = Color.parseColor("#E8E8F0") // onSurface
-    private val onSurfaceVariantColor = Color.parseColor("#A0A0B8") // onSurfaceVariant
-    private val outlineColor = Color.parseColor("#6B6B80") // outline
-    private val outlineVariantColor = Color.parseColor("#333350") // outlineVariant
-    private val primaryColor = Color.parseColor("#6C63FF") // primary
-    private val onPrimaryColor = Color.WHITE
-    private val tertiaryColor = Color.parseColor("#00BCD4") // tertiary
-    private val tertiaryContainerColor = Color.parseColor("#1A00BCD4") // tertiaryContainer
-    private val errorColor = Color.parseColor("#EF5350") // error
-    private val errorContainerColor = Color.parseColor("#26EF5350") // errorContainer
+    private val palette = neutralPalette(serviceContext)
+    private val bgColor = palette.scrim
+    private val surfaceColor = palette.surface
+    private val surfaceContainerColor = palette.surfaceContainer
+    private val surfaceContainerHighColor = palette.surfaceContainerHigh
+    private val surfaceContainerHighestColor = palette.surfaceContainerHighest
+    private val onSurfaceColor = palette.onSurface
+    private val onSurfaceVariantColor = palette.onSurfaceVariant
+    private val outlineColor = palette.outline
+    private val outlineVariantColor = palette.outlineVariant
+    private val primaryColor = palette.primary
+    private val onPrimaryColor = palette.onPrimary
+    private val tertiaryColor = palette.tertiary
+    private val tertiaryContainerColor = palette.tertiaryContainer
+    private val successColor = palette.success
+    private val successContainerColor = palette.successContainer
+    private val errorColor = palette.error
+    private val errorContainerColor = palette.errorContainer
 
     private val density = serviceContext.resources.displayMetrics.density
 
@@ -207,7 +210,7 @@ class AnswerPanelOverlay(
 
         // Height indicator (shown during drag)
         heightIndicator = TextView(context).apply {
-            setTextColor(onPrimaryColor)
+            setTextColor(Color.WHITE)
             textSize = 14f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             gravity = Gravity.CENTER
@@ -1363,7 +1366,7 @@ class AnswerPanelOverlay(
             setColor(
                 when (tone) {
                     TimelineTone.THINKING -> tertiaryContainerColor.copy(alpha = 96)
-                    TimelineTone.TOOL -> Color.parseColor("#1A4CAF50")
+                    TimelineTone.TOOL -> successContainerColor
                     TimelineTone.ANSWER -> surfaceContainerHighColor
                     TimelineTone.ERROR -> errorContainerColor
                 },
@@ -1376,7 +1379,7 @@ class AnswerPanelOverlay(
     private fun timelineAccentColor(tone: TimelineTone): Int {
         return when (tone) {
             TimelineTone.THINKING -> tertiaryColor
-            TimelineTone.TOOL -> Color.parseColor("#66BB6A")
+            TimelineTone.TOOL -> successColor
             TimelineTone.ANSWER -> primaryColor
             TimelineTone.ERROR -> errorColor
         }

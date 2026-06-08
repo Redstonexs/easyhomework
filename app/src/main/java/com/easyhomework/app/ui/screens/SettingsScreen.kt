@@ -77,6 +77,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -1144,12 +1145,13 @@ private fun SectionTitle(title: String, subtitle: String) {
 
 @Composable
 private fun StatusPill(text: String, color: Color) {
+    val textColor = if (color.luminance() > 0.5f) Color.Black else Color.White
     Text(
         text,
         modifier = Modifier
-            .background(color.copy(alpha = 0.14f), RoundedCornerShape(8.dp))
+            .background(color.copy(alpha = 0.90f), RoundedCornerShape(8.dp))
             .padding(horizontal = 9.dp, vertical = 5.dp),
-        color = color,
+        color = textColor,
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
     )

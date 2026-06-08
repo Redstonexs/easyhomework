@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.easyhomework.app.ocr.SmartRegionDetector
 import com.easyhomework.app.ocr.TextRecognitionManager
+import com.easyhomework.app.ui.theme.neutralPalette
 import com.easyhomework.app.util.PreferencesManager
 import kotlin.math.max
 import kotlin.math.min
@@ -63,25 +64,26 @@ class RegionSelectorOverlay(
     private var isDraggingRegion = false
 
     // Paints
+    private val palette = neutralPalette(context)
     private val overlayPaint = Paint().apply {
         color = Color.parseColor("#AA000000")
     }
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#6C63FF")
+        color = palette.primary
         style = Paint.Style.STROKE
         strokeWidth = 4f
     }
     private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#6C63FF")
+        color = if (palette.isDark) Color.WHITE else Color.BLACK
         style = Paint.Style.FILL
     }
     private val handleBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
+        color = if (palette.isDark) Color.BLACK else Color.WHITE
         style = Paint.Style.STROKE
         strokeWidth = 3f
     }
     private val cornerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#6C63FF")
+        color = palette.primary
         style = Paint.Style.STROKE
         strokeWidth = 6f
         strokeCap = Paint.Cap.ROUND
@@ -149,13 +151,13 @@ class RegionSelectorOverlay(
         }
 
         // Cancel button
-        val cancelBtn = createButton("✕ 取消", "#FF5252") {
+        val cancelBtn = createButton("✕ 取消", palette.error) {
             onCancel?.invoke()
         }
 
         // Direct image button (for vision models)
         val directImageBtn = if (isVisionModel) {
-            createButton("直接识图", "#FF9800") {
+            createButton("直接识图", palette.warning) {
                 confirmSelection(sendDirectImage = true)
             }
         } else {
@@ -163,7 +165,7 @@ class RegionSelectorOverlay(
         }
 
         // Confirm OCR button
-        val confirmBtn = createButton("✓ OCR 识字", "#6C63FF") {
+        val confirmBtn = createButton("✓ OCR 识字", palette.primary) {
             confirmSelection(sendDirectImage = false)
         }
 
@@ -237,21 +239,25 @@ class RegionSelectorOverlay(
         }
     }
 
-    private fun createButton(text: String, bgColor: String, onClick: () -> Unit): TextView {
+    private fun createButton(text: String, bgColor: Int, onClick: () -> Unit): TextView {
         return TextView(context).apply {
             this.text = text
-            setTextColor(Color.WHITE)
+            setTextColor(readableTextColor(bgColor))
             textSize = 14f
             gravity = Gravity.CENTER
             setPadding(32, 20, 32, 20)
             val bg = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.parseColor(bgColor))
+                setColor(bgColor)
                 cornerRadius = 32f
             }
             background = bg
             elevation = 8f
             setOnClickListener { onClick() }
         }
+    }
+
+    private fun readableTextColor(background: Int): Int {
+        return if (Color.luminance(background) > 0.5) Color.BLACK else Color.WHITE
     }
 
     @SuppressLint("SetTextI18n")

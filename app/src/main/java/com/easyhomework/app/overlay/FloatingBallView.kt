@@ -6,6 +6,7 @@ import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
 import android.view.animation.LinearInterpolator
+import com.easyhomework.app.ui.theme.neutralPalette
 import kotlin.math.min
 
 /**
@@ -24,16 +25,12 @@ class FloatingBallView @JvmOverloads constructor(
             invalidate()
         }
 
-    private val gradientColors = intArrayOf(
-        Color.parseColor("#7C4DFF"),
-        Color.parseColor("#448AFF"),
-    )
-
-    private val glowColor = Color.parseColor("#806C63FF")
+    private val palette = neutralPalette(context)
+    private val glowColor = Color.argb(if (palette.isDark) 120 else 80, 0, 0, 0)
 
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
+        color = palette.onPrimary
         style = Paint.Style.STROKE
         strokeWidth = 6f
         strokeCap = Paint.Cap.ROUND
@@ -44,20 +41,20 @@ class FloatingBallView @JvmOverloads constructor(
         maskFilter = BlurMaskFilter(30f, BlurMaskFilter.Blur.OUTER)
     }
     private val miniPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#805F6368")
+        color = if (palette.isDark) Color.parseColor("#B3555555") else Color.parseColor("#B3D0D0D0")
         style = Paint.Style.FILL
     }
     private val miniBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#B3FFFFFF")
+        color = if (palette.isDark) Color.parseColor("#B3FFFFFF") else Color.parseColor("#B3111111")
         style = Paint.Style.STROKE
         strokeWidth = 2f
     }
     private val miniTouchHintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#245F6368")
+        color = if (palette.isDark) Color.parseColor("#24444444") else Color.parseColor("#24111111")
         style = Paint.Style.FILL
     }
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
+        color = palette.onPrimary
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         textAlign = Paint.Align.CENTER
     }
@@ -97,7 +94,6 @@ class FloatingBallView @JvmOverloads constructor(
             canvas.drawCircle(cx, cy, miniRadius, miniPaint)
             canvas.drawCircle(cx, cy, miniRadius, miniBorderPaint)
         } else {
-            // Normal mode: gradient background (same look as old mini mode)
             val alpha = 220
 
             // Draw subtle glow
@@ -111,13 +107,8 @@ class FloatingBallView @JvmOverloads constructor(
             canvas.drawCircle(cx, cy, radius + 5f, glowPaint)
             canvas.restore()
 
-            // Draw gradient background circle
-            backgroundPaint.shader = LinearGradient(
-                cx - radius, cy - radius,
-                cx + radius, cy + radius,
-                gradientColors, null,
-                Shader.TileMode.CLAMP,
-            )
+            backgroundPaint.shader = null
+            backgroundPaint.color = palette.primary
             backgroundPaint.alpha = alpha
             canvas.drawCircle(cx, cy, radius, backgroundPaint)
 

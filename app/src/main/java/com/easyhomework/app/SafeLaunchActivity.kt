@@ -5,7 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -14,12 +14,14 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.easyhomework.app.ui.theme.neutralPalette
 import com.easyhomework.app.util.CrashReporter
 
 class SafeLaunchActivity : Activity() {
     private lateinit var crashInfo: TextView
     private lateinit var crashPreview: TextView
     private var diagnosticsVisible = false
+    private val palette by lazy { neutralPalette(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         CrashReporter.setStage(this, "safe_launch_on_create")
@@ -45,12 +47,12 @@ class SafeLaunchActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(24), dp(20), dp(20))
-            setBackgroundColor(Color.parseColor("#101318"))
+            setBackgroundColor(palette.background)
         }
 
         val title = TextView(this).apply {
             text = "EasyHomework 安全启动"
-            setTextColor(Color.WHITE)
+            setTextColor(palette.onSurface)
             textSize = 24f
             gravity = Gravity.START
         }
@@ -58,7 +60,7 @@ class SafeLaunchActivity : Activity() {
 
         val subtitle = TextView(this).apply {
             text = "如果主界面仍闪退，重新打开 App 后可在这里复制诊断日志。"
-            setTextColor(Color.parseColor("#B8C0CC"))
+            setTextColor(palette.onSurfaceVariant)
             textSize = 14f
             setPadding(0, dp(8), 0, dp(16))
         }
@@ -88,18 +90,18 @@ class SafeLaunchActivity : Activity() {
         )
 
         crashInfo = TextView(this).apply {
-            setTextColor(Color.parseColor("#D8DEE9"))
+            setTextColor(palette.onSurface)
             textSize = 13f
             setPadding(0, dp(16), 0, dp(8))
         }
         root.addView(crashInfo, matchWrapParams())
 
         crashPreview = TextView(this).apply {
-            setTextColor(Color.parseColor("#AAB2BF"))
+            setTextColor(palette.onSurfaceVariant)
             textSize = 12f
             setTextIsSelectable(true)
             setPadding(dp(12), dp(12), dp(12), dp(12))
-            setBackgroundColor(Color.parseColor("#1B2028"))
+            setBackgroundColor(palette.surfaceContainer)
         }
 
         val scrollView = ScrollView(this).apply {
@@ -145,6 +147,11 @@ class SafeLaunchActivity : Activity() {
         return Button(this).apply {
             this.text = text
             setAllCaps(false)
+            setTextColor(palette.onPrimary)
+            background = GradientDrawable().apply {
+                setColor(palette.primary)
+                cornerRadius = dp(8).toFloat()
+            }
             setOnClickListener(onClick)
         }
     }
