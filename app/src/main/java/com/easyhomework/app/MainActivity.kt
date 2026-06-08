@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,6 +23,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLifecycleOwner as PlatformLocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner as LifecycleLocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -64,42 +67,47 @@ class MainActivity : ComponentActivity() {
 
         CrashReporter.setStage(this, "main_activity_set_content")
         setContent {
-            EasyHomeworkTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    var serviceEnabled by remember { mutableStateOf(preferencesManager.isFloatingBallEnabled) }
+            CompositionLocalProvider(
+                LifecycleLocalLifecycleOwner provides this@MainActivity,
+                PlatformLocalLifecycleOwner provides this@MainActivity,
+            ) {
+                EasyHomeworkTheme {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background,
+                    ) {
+                        var serviceEnabled by remember { mutableStateOf(preferencesManager.isFloatingBallEnabled) }
 
-                    LaunchedEffect(Unit) {
-                        serviceEnabled = preferencesManager.isFloatingBallEnabled
-                    }
-
-                    DisposableEffect(Unit) {
-                        val listener = preferencesManager.registerFloatingBallEnabledListener { enabled ->
-                            serviceEnabled = enabled
-                        }
-                        onDispose {
-                            preferencesManager.unregisterFloatingBallEnabledListener(listener)
-                        }
-                    }
-
-                    AppNavigationContent(
-                        onToggleService = { enabled ->
-                            serviceEnabled = enabled
-                            if (enabled) {
-                                if (!requestOverlayPermissionAndStart()) {
-                                    serviceEnabled = false
-                                }
-                            } else {
-                                stopFloatingBallService()
-                            }
-                        },
-                        isServiceRunning = serviceEnabled,
-                        onResyncState = {
+                        LaunchedEffect(Unit) {
                             serviceEnabled = preferencesManager.isFloatingBallEnabled
-                        },
-                    )
+                        }
+
+                        DisposableEffect(Unit) {
+                            val listener = preferencesManager.registerFloatingBallEnabledListener { enabled ->
+                                serviceEnabled = enabled
+                            }
+                            onDispose {
+                                preferencesManager.unregisterFloatingBallEnabledListener(listener)
+                            }
+                        }
+
+                        AppNavigationContent(
+                            onToggleService = { enabled ->
+                                serviceEnabled = enabled
+                                if (enabled) {
+                                    if (!requestOverlayPermissionAndStart()) {
+                                        serviceEnabled = false
+                                    }
+                                } else {
+                                    stopFloatingBallService()
+                                }
+                            },
+                            isServiceRunning = serviceEnabled,
+                            onResyncState = {
+                                serviceEnabled = preferencesManager.isFloatingBallEnabled
+                            },
+                        )
+                    }
                 }
             }
         }
