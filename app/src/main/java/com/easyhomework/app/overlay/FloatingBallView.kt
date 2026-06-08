@@ -44,13 +44,17 @@ class FloatingBallView @JvmOverloads constructor(
         maskFilter = BlurMaskFilter(30f, BlurMaskFilter.Blur.OUTER)
     }
     private val miniPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#4D5F6368")
+        color = Color.parseColor("#805F6368")
         style = Paint.Style.FILL
     }
     private val miniBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#66FFFFFF")
+        color = Color.parseColor("#B3FFFFFF")
         style = Paint.Style.STROKE
-        strokeWidth = 1f
+        strokeWidth = 2f
+    }
+    private val miniTouchHintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#245F6368")
+        style = Paint.Style.FILL
     }
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -87,7 +91,9 @@ class FloatingBallView @JvmOverloads constructor(
         val radius = min(width, height) / 2f - if (isMiniMode) 2f else 4f
 
         if (isMiniMode) {
-            val miniRadius = min(width, height) * 0.13f
+            val touchHintRadius = min(width, height) * (MINI_RADIUS_FRACTION + MINI_TOUCH_HINT_EXTRA_FRACTION)
+            val miniRadius = min(width, height) * MINI_RADIUS_FRACTION
+            canvas.drawCircle(cx, cy, touchHintRadius, miniTouchHintPaint)
             canvas.drawCircle(cx, cy, miniRadius, miniPaint)
             canvas.drawCircle(cx, cy, miniRadius, miniBorderPaint)
         } else {
@@ -125,5 +131,10 @@ class FloatingBallView @JvmOverloads constructor(
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         breathingAnimator?.cancel()
+    }
+
+    private companion object {
+        const val MINI_RADIUS_FRACTION = 0.21f
+        const val MINI_TOUCH_HINT_EXTRA_FRACTION = 0.06f
     }
 }

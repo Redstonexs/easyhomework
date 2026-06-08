@@ -14,6 +14,7 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.animation.OvershootInterpolator
 import android.widget.Toast
@@ -26,7 +27,6 @@ import com.easyhomework.app.overlay.AnswerPanelOverlay
 import com.easyhomework.app.overlay.FloatingBallView
 import com.easyhomework.app.overlay.RegionSelectorOverlay
 import com.easyhomework.app.util.PreferencesManager
-import kotlin.math.abs
 
 /**
  * Foreground service that manages the floating ball overlay.
@@ -71,10 +71,9 @@ class FloatingBallService : Service() {
         const val EXTRA_SCREENSHOT_PATH = "screenshot_path"
         const val EXTRA_SCREENSHOT_ERROR = "screenshot_error"
 
-        private const val CLICK_THRESHOLD = 10
         private const val BALL_SIZE_NORMAL = 52
-        private const val BALL_SIZE_MINI = 14
         private const val BALL_TOUCH_SIZE_MINI = 48 // Much larger touch target for mini ball
+        private const val DRAG_SLOP_DP = 8f
         private const val LONG_PRESS_DURATION = 800L
 
         private var instance: FloatingBallService? = null
@@ -222,6 +221,7 @@ class FloatingBallService : Service() {
     // ---- Touch Handling ----
 
     private fun handleBallTouch(view: View, event: MotionEvent) {
+        val dragSlop = dragSlopPx()
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 initialX = ballParams?.x ?: 0
@@ -241,8 +241,10 @@ class FloatingBallService : Service() {
             MotionEvent.ACTION_MOVE -> {
                 val dx = event.rawX - initialTouchX
                 val dy = event.rawY - initialTouchY
+                val movementSquared = dx * dx + dy * dy
+                val dragSlopSquared = dragSlop * dragSlop
 
-                if (abs(dx) > CLICK_THRESHOLD || abs(dy) > CLICK_THRESHOLD) {
+                if (movementSquared > dragSlopSquared) {
                     isDragging = true
                     // Cancel long press if dragging
                     handler.removeCallbacks(longPressRunnable)
@@ -283,6 +285,12 @@ class FloatingBallService : Service() {
                 view.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
             }
         }
+    }
+
+    private fun dragSlopPx(): Float {
+        val systemSlop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()
+        val minSlop = DRAG_SLOP_DP * resources.displayMetrics.density
+        return maxOf(systemSlop, minSlop)
     }
 
     /**
