@@ -40,7 +40,17 @@ import com.easyhomework.app.viewmodel.SettingsViewModel
 
 class MainActivity : ComponentActivity() {
 
+    companion object {
+        private const val MAIN_LAUNCH_STABLE_DELAY_MS = 1_500L
+    }
+
     private lateinit var preferencesManager: PreferencesManager
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val markMainLaunchStableRunnable = Runnable {
+        if (!isFinishing && !isDestroyed) {
+            CrashReporter.markMainLaunchStable(this)
+        }
+    }
 
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -62,6 +72,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         CrashReporter.setStage(this, "main_activity_on_create")
         super.onCreate(savedInstanceState)
+        CrashReporter.markLaunchAttempt(this)
         preferencesManager = PreferencesManager(this)
         syncStaleFloatingBallState()
 
@@ -111,8 +122,19 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        scheduleMainLaunchStableMark()
         requestNotificationPermissionAfterFirstDraw()
         CrashReporter.setStage(this, "main_activity_ready")
+    }
+
+    override fun onDestroy() {
+        mainHandler.removeCallbacks(markMainLaunchStableRunnable)
+        super.onDestroy()
+    }
+
+    private fun scheduleMainLaunchStableMark() {
+        mainHandler.removeCallbacks(markMainLaunchStableRunnable)
+        mainHandler.postDelayed(markMainLaunchStableRunnable, MAIN_LAUNCH_STABLE_DELAY_MS)
     }
 
     private fun requestOverlayPermissionAndStart(): Boolean {
@@ -171,7 +193,7 @@ class MainActivity : ComponentActivity() {
 
     private fun requestNotificationPermissionAfterFirstDraw() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        Handler(Looper.getMainLooper()).postDelayed({
+        mainHandler.postDelayed({
             if (!isFinishing && !isDestroyed) {
                 notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             }

@@ -19,10 +19,16 @@ import com.easyhomework.app.util.CrashReporter
 class SafeLaunchActivity : Activity() {
     private lateinit var crashInfo: TextView
     private lateinit var crashPreview: TextView
+    private var diagnosticsVisible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         CrashReporter.setStage(this, "safe_launch_on_create")
         super.onCreate(savedInstanceState)
+        if (!CrashReporter.shouldShowSafeLaunch(this)) {
+            routeToMain("safe_launch_route_to_main")
+            return
+        }
+        diagnosticsVisible = true
         buildUi()
         refreshCrashInfo()
         CrashReporter.setStage(this, "safe_launch_ready")
@@ -30,7 +36,9 @@ class SafeLaunchActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        refreshCrashInfo()
+        if (diagnosticsVisible) {
+            refreshCrashInfo()
+        }
     }
 
     private fun buildUi() {
@@ -58,8 +66,7 @@ class SafeLaunchActivity : Activity() {
 
         root.addView(
             createButton("进入主界面") {
-                CrashReporter.setStage(this, "safe_launch_open_main")
-                startActivity(Intent(this, MainActivity::class.java))
+                routeToMain("safe_launch_open_main")
             },
             matchWrapParams(),
         )
@@ -123,6 +130,15 @@ class SafeLaunchActivity : Activity() {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("EasyHomework crash report", report))
         Toast.makeText(this, "诊断日志已复制", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun routeToMain(stage: String) {
+        CrashReporter.setStage(this, stage)
+        val intent = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        startActivity(intent)
+        finish()
+        overridePendingTransition(0, 0)
     }
 
     private fun createButton(text: String, onClick: View.OnClickListener): Button {
