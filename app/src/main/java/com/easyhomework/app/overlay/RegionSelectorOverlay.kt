@@ -108,6 +108,9 @@ class RegionSelectorOverlay(
         const val AUTO_SUBMIT_CONFIDENCE = 0.82f
         const val AUTO_SUBMIT_DELAY_MS = 450L
         const val STATUS_HIDE_DELAY_MS = 1600L
+        const val CONFIRM_FAILURE_DELAY_MS = 2000L
+        const val CROP_PADDING_RATIO = 0.02f
+        const val MIN_CROP_PADDING_PX = 8f
     }
 
     enum class Handle {
@@ -483,12 +486,7 @@ class RegionSelectorOverlay(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    isConfirming = false
-                    statusText.text = "处理失败: ${e.message}"
-                    statusText.postDelayed({
-                        statusText.visibility = View.GONE
-                        buttonBar.visibility = View.VISIBLE
-                    }, 2000)
+                    showConfirmFailure("处理失败: ${e.message}")
                 }
             } else {
                 // OCR mode
@@ -505,36 +503,50 @@ class RegionSelectorOverlay(
                         recognizer.close()
                     }
 
-                    if (result.text.isBlank()) {
-                        isConfirming = false
-                        statusText.text = "未识别到文字，请重新选择区域"
-                        statusText.postDelayed({
-                            statusText.visibility = View.GONE
-                            buttonBar.visibility = View.VISIBLE
-                        }, 2000)
-                    } else {
-                        val bitmap = croppedBitmap
-                        val text = result.text
-                        onConfirm?.invoke(bitmap, text, false)
+                    when {
+                        result.error != null -> {
+                            showConfirmFailure("识别失败: ${result.error}")
+                        }
+                        result.text.isBlank() -> {
+                            val message = if (isVisionModel) {
+                                "未识别到文字，可改用直接识图或重新选择区域"
+                            } else {
+                                "未识别到文字，请重新选择区域"
+                            }
+                            showConfirmFailure(message)
+                        }
+                        else -> {
+                            val bitmap = croppedBitmap
+                            val text = result.text
+                            onConfirm?.invoke(bitmap, text, false)
+                        }
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    isConfirming = false
-                    statusText.text = "识别失败: ${e.message}"
-                    statusText.postDelayed({
-                        statusText.visibility = View.GONE
-                        buttonBar.visibility = View.VISIBLE
-                    }, 2000)
+                    showConfirmFailure("识别失败: ${e.message}")
                 }
             }
         }
     }
 
+    private fun showConfirmFailure(message: String) {
+        isConfirming = false
+        statusText.text = message
+        statusText.postDelayed({
+            statusText.visibility = View.GONE
+            buttonBar.visibility = View.VISIBLE
+        }, CONFIRM_FAILURE_DELAY_MS)
+    }
+
     private fun cropSelectedBitmap(): Bitmap {
+        val horizontalPadding = max(MIN_CROP_PADDING_PX, selectionRect.width() * CROP_PADDING_RATIO)
+        val verticalPadding = max(MIN_CROP_PADDING_PX, selectionRect.height() * CROP_PADDING_RATIO)
         val cropRect = Rect(
-            max(0, selectionRect.left.toInt()),
-            max(0, selectionRect.top.toInt()),
-            min(screenshot.width, selectionRect.right.toInt()),
-            min(screenshot.height, selectionRect.bottom.toInt()),
+            max(0, (selectionRect.left - horizontalPadding).toInt()),
+            max(0, (selectionRect.top - verticalPadding).toInt()),
+            min(screenshot.width, (selectionRect.right + horizontalPadding).toInt()),
+            min(screenshot.height, (selectionRect.bottom + verticalPadding).toInt()),
         )
         require(cropRect.width() > 0 && cropRect.height() > 0) { "选区无效" }
 
