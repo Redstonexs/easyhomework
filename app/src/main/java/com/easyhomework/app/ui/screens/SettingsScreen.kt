@@ -127,7 +127,7 @@ fun SettingsScreen(
     var showApiKey by remember { mutableStateOf(false) }
     var showModelDropdown by remember { mutableStateOf(false) }
     var showProviderMenu by remember { mutableStateOf(false) }
-    var expandProvider by remember { mutableStateOf(false) }
+    var expandProvider by remember { mutableStateOf(true) }
     var expandPrompt by remember { mutableStateOf(false) }
     var expandAdvanced by remember { mutableStateOf(false) }
 
@@ -137,6 +137,10 @@ fun SettingsScreen(
 
     LaunchedEffect(isServiceRunning) {
         serviceEnabled = isServiceRunning
+    }
+
+    LaunchedEffect(activeProviderId) {
+        showApiKey = false
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -183,12 +187,9 @@ fun SettingsScreen(
             QuickSetupSection(
                 config = config,
                 setupStatus = setupStatus,
-                showApiKey = showApiKey,
                 showModelDropdown = showModelDropdown,
                 availableModels = availableModels,
                 isFetchingModels = isFetchingModels,
-                onApiKeyChanged = { viewModel.updateConfig(config.copy(apiKey = it)) },
-                onShowApiKeyChanged = { showApiKey = it },
                 onModelNameChanged = viewModel::updateModelName,
                 onFetchModels = {
                     viewModel.fetchModels()
@@ -227,12 +228,15 @@ fun SettingsScreen(
                     config = config,
                     providerConfigs = providerConfigs,
                     activeProviderId = activeProviderId,
+                    showApiKey = showApiKey,
                     showProviderMenu = showProviderMenu,
                     onProviderMenuChanged = { showProviderMenu = it },
                     onSelectProvider = viewModel::selectProvider,
                     onAddProvider = viewModel::addNewProvider,
                     onDeleteProvider = viewModel::deleteProvider,
                     onProviderNameChanged = { viewModel.updateProviderName(config.id, it) },
+                    onApiKeyChanged = { viewModel.updateConfig(config.copy(apiKey = it)) },
+                    onShowApiKeyChanged = { showApiKey = it },
                     onApiTypeChanged = { type ->
                         val newPath = when (type) {
                             ApiType.OPENAI -> "/v1/chat/completions"
@@ -373,12 +377,9 @@ private fun FloatingBallControlSection(
 private fun QuickSetupSection(
     config: LLMConfig,
     setupStatus: SetupStatus,
-    showApiKey: Boolean,
     showModelDropdown: Boolean,
     availableModels: List<ModelInfo>,
     isFetchingModels: Boolean,
-    onApiKeyChanged: (String) -> Unit,
-    onShowApiKeyChanged: (Boolean) -> Unit,
     onModelNameChanged: (String) -> Unit,
     onFetchModels: () -> Unit,
     onModelDropdownChanged: (Boolean) -> Unit,
@@ -389,25 +390,6 @@ private fun QuickSetupSection(
             SetupStatusBlock(setupStatus = setupStatus, config = config)
 
             Spacer(modifier = Modifier.height(16.dp))
-
-            SettingsTextField(
-                label = "API 密钥",
-                value = config.apiKey,
-                onValueChange = onApiKeyChanged,
-                placeholder = if (config.apiType == ApiType.OPENAI) "sk-..." else "sk-ant-...",
-                icon = Icons.Outlined.Key,
-                isPassword = !showApiKey,
-                trailingIcon = {
-                    IconButton(onClick = { onShowApiKeyChanged(!showApiKey) }) {
-                        Icon(
-                            if (showApiKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                            contentDescription = "切换密钥显示",
-                        )
-                    }
-                },
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
 
             ModelSelectorRow(
                 config = config,
@@ -729,12 +711,15 @@ private fun ProviderAndEndpointContent(
     config: LLMConfig,
     providerConfigs: List<LLMConfig>,
     activeProviderId: String,
+    showApiKey: Boolean,
     showProviderMenu: Boolean,
     onProviderMenuChanged: (Boolean) -> Unit,
     onSelectProvider: (String) -> Unit,
     onAddProvider: () -> Unit,
     onDeleteProvider: (String) -> Unit,
     onProviderNameChanged: (String) -> Unit,
+    onApiKeyChanged: (String) -> Unit,
+    onShowApiKeyChanged: (Boolean) -> Unit,
     onApiTypeChanged: (ApiType) -> Unit,
     onEndpointChanged: (String) -> Unit,
     onPathChanged: (String) -> Unit,
@@ -817,6 +802,25 @@ private fun ProviderAndEndpointContent(
         onValueChange = onProviderNameChanged,
         placeholder = "默认配置",
         icon = Icons.Outlined.Tune,
+    )
+
+    Spacer(modifier = Modifier.height(12.dp))
+
+    SettingsTextField(
+        label = "API 密钥",
+        value = config.apiKey,
+        onValueChange = onApiKeyChanged,
+        placeholder = if (config.apiType == ApiType.OPENAI) "sk-..." else "sk-ant-...",
+        icon = Icons.Outlined.Key,
+        isPassword = !showApiKey,
+        trailingIcon = {
+            IconButton(onClick = { onShowApiKeyChanged(!showApiKey) }) {
+                Icon(
+                    if (showApiKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                    contentDescription = "切换密钥显示",
+                )
+            }
+        },
     )
 
     Spacer(modifier = Modifier.height(16.dp))
