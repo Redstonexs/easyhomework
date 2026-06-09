@@ -359,11 +359,7 @@ private fun FloatingBallControlSection(
 
             ToggleSettingRow(
                 title = "悬浮球",
-                subtitle = if (serviceEnabled) {
-                    "全局搜题入口已启用"
-                } else {
-                    "作为应用级总开关独立控制"
-                },
+                subtitle = null,
                 icon = Icons.Outlined.SmartToy,
                 iconTint = if (serviceEnabled) AccentGreen else MaterialTheme.colorScheme.outline,
                 checked = serviceEnabled,
@@ -639,7 +635,7 @@ private fun UsageSection(
 ) {
     SettingsCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
-            SectionTitle(title = "常用操作", subtitle = "日常使用中最常改的开关")
+            SectionTitle(title = "常用操作")
             Spacer(modifier = Modifier.height(8.dp))
             ToggleSettingRow(
                 title = "迷你悬浮球",
@@ -661,7 +657,7 @@ private fun UsageSection(
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             NavigationSettingRow(
                 title = "搜题历史",
-                subtitle = "查看之前的搜题记录",
+                subtitle = null,
                 icon = Icons.Outlined.History,
                 iconTint = AccentCyan,
                 onClick = onNavigateToHistory,
@@ -952,8 +948,8 @@ private fun AdvancedContent(
     ToggleSettingRow(
         title = "思考模式",
         subtitle = when (config.apiType) {
-            ApiType.OPENAI -> "支持 o1/o3/DeepSeek-R1 等模型"
-            ApiType.ANTHROPIC -> "Claude Extended Thinking"
+            ApiType.OPENAI -> "适配推理模型"
+            ApiType.ANTHROPIC -> "Claude 扩展思考"
         },
         icon = Icons.Outlined.SmartToy,
         iconTint = AccentOrange,
@@ -1075,7 +1071,7 @@ private fun CollapsibleSettingsSection(
 @Composable
 private fun ToggleSettingRow(
     title: String,
-    subtitle: String,
+    subtitle: String? = null,
     icon: ImageVector,
     iconTint: Color,
     checked: Boolean,
@@ -1089,11 +1085,13 @@ private fun ToggleSettingRow(
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            subtitle?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         Switch(
             checked = checked,
@@ -1108,7 +1106,7 @@ private fun ToggleSettingRow(
 @Composable
 private fun NavigationSettingRow(
     title: String,
-    subtitle: String,
+    subtitle: String? = null,
     icon: ImageVector,
     iconTint: Color,
     onClick: () -> Unit,
@@ -1123,11 +1121,13 @@ private fun NavigationSettingRow(
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            subtitle?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         Icon(
             Icons.Filled.ChevronRight,
@@ -1138,17 +1138,19 @@ private fun NavigationSettingRow(
 }
 
 @Composable
-private fun SectionTitle(title: String, subtitle: String) {
+private fun SectionTitle(title: String, subtitle: String? = null) {
     Text(
         title,
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
     )
-    Text(
-        subtitle,
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    subtitle?.let {
+        Text(
+            it,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
