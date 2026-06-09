@@ -89,7 +89,7 @@ class RegionSelectorOverlay(
         strokeCap = Paint.Cap.ROUND
     }
 
-    private val smartDetector = SmartRegionDetector()
+    private val smartDetector = SmartRegionDetector(context)
     private val preferencesManager = PreferencesManager(context)
     private val isVisionModel = preferencesManager.getLLMConfig().supportsVisionInput()
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -496,7 +496,7 @@ class RegionSelectorOverlay(
 
                 try {
                     val croppedBitmap = cropSelectedBitmap()
-                    val recognizer = TextRecognitionManager()
+                    val recognizer = TextRecognitionManager(context)
                     val result = try {
                         recognizer.recognizeText(croppedBitmap)
                     } finally {

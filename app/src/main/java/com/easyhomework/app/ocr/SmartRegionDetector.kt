@@ -1,5 +1,6 @@
 package com.easyhomework.app.ocr
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Rect
 import com.google.mlkit.vision.common.InputImage
@@ -16,9 +17,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * Detects the most likely "question" region in a screenshot using ML Kit text detection.
  * Analyzes text block positions, density, and layout to suggest a crop region.
  */
-class SmartRegionDetector {
+class SmartRegionDetector(context: Context) {
 
     private var recognizer: com.google.mlkit.vision.text.TextRecognizer? = null
+    private val appContext = context.applicationContext
 
     private companion object {
         const val NO_TEXT_CONFIDENCE = 0.25f
@@ -412,6 +414,7 @@ class SmartRegionDetector {
 
     private fun getRecognizer(): Result<com.google.mlkit.vision.text.TextRecognizer> {
         return runCatching {
+            MlKitInitializer.ensureInitialized(appContext)
             recognizer ?: TextRecognition.getClient(
                 ChineseTextRecognizerOptions.Builder().build(),
             ).also { recognizer = it }

@@ -1,5 +1,6 @@
 package com.easyhomework.app.ocr
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
@@ -21,10 +22,11 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * Manages text recognition using Google ML Kit.
  * Supports both Chinese and Latin text recognition.
  */
-class TextRecognitionManager {
+class TextRecognitionManager(context: Context) {
 
     private var chineseRecognizer: TextRecognizer? = null
     private var latinRecognizer: TextRecognizer? = null
+    private val appContext = context.applicationContext
 
     private companion object {
         const val MIN_USEFUL_TEXT_LENGTH = 5
@@ -127,6 +129,7 @@ class TextRecognitionManager {
 
     private fun getChineseRecognizer(): Result<TextRecognizer> {
         return runCatching {
+            MlKitInitializer.ensureInitialized(appContext)
             chineseRecognizer ?: TextRecognition.getClient(
                 ChineseTextRecognizerOptions.Builder().build(),
             ).also { chineseRecognizer = it }
@@ -135,6 +138,7 @@ class TextRecognitionManager {
 
     private fun getLatinRecognizer(): Result<TextRecognizer> {
         return runCatching {
+            MlKitInitializer.ensureInitialized(appContext)
             latinRecognizer ?: TextRecognition.getClient(
                 TextRecognizerOptions.Builder().build(),
             ).also { latinRecognizer = it }
