@@ -23,6 +23,7 @@ import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.view.inputmethod.EditorInfo
@@ -166,6 +167,8 @@ class AnswerPanelOverlay(
     private var heightIndicator: TextView? = null
     private var heightIndicatorHandler = Handler(Looper.getMainLooper())
     private var hideHeightIndicatorRunnable: Runnable? = null
+    private var currentImeBottomInset = 0
+    private var isClosing = false
 
     init {
         buildUI()
@@ -183,6 +186,9 @@ class AnswerPanelOverlay(
     @SuppressLint("ClickableViewAccessibility")
     private fun buildUI() {
         setBackgroundColor(bgColor)
+        clipChildren = false
+        clipToPadding = false
+        installImeInsetsListener()
 
         panelContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -269,6 +275,7 @@ class AnswerPanelOverlay(
                             val params = panelContainer.layoutParams as LayoutParams
                             params.height = newHeight.toInt()
                             panelContainer.layoutParams = params
+                            updateImeReservedHeight(newHeight.toInt())
 
                             // Update height indicator
                             updateHeightIndicator(newHeight.toInt())
@@ -439,6 +446,11 @@ class AnswerPanelOverlay(
                     false
                 }
             }
+            setOnFocusChangeListener { _, hasFocus ->
+                if (hasFocus) {
+                    post { refreshImeInsets() }
+                }
+            }
         }
         inputContainer.addView(
             inputField,
@@ -464,6 +476,68 @@ class AnswerPanelOverlay(
         inputContainer.addView(sendButton, sendParams)
 
         panelContainer.addView(inputContainer)
+    }
+
+    private fun installImeInsetsListener() {
+        setOnApplyWindowInsetsListener { _, insets ->
+            applyImeInsets(insets)
+            insets
+        }
+    }
+
+    private fun refreshImeInsets() {
+        rootWindowInsets?.let { applyImeInsets(it) }
+        requestApplyInsets()
+    }
+
+    private fun applyImeInsets(insets: WindowInsets) {
+        if (isClosing) return
+
+        val imeBottomInset = getImeBottomInset(insets)
+        if (currentImeBottomInset == imeBottomInset) return
+
+        val previousImeBottomInset = currentImeBottomInset
+        currentImeBottomInset = imeBottomInset
+        if (imeBottomInset > previousImeBottomInset) {
+            updateImeReservedHeight()
+        }
+        panelContainer.animate().cancel()
+        panelContainer.animate()
+            .translationY(-imeBottomInset.toFloat())
+            .setDuration(180)
+            .setInterpolator(DecelerateInterpolator(1.5f))
+            .withEndAction {
+                updateImeReservedHeight()
+                if (imeBottomInset > 0) {
+                    scrollToBottom()
+                }
+            }
+            .start()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun getImeBottomInset(insets: WindowInsets): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (insets.isVisible(WindowInsets.Type.ime())) {
+                insets.getInsets(WindowInsets.Type.ime()).bottom
+            } else {
+                0
+            }
+        } else if (inputField.hasFocus()) {
+            insets.systemWindowInsetBottom
+        } else {
+            0
+        }
+    }
+
+    private fun updateImeReservedHeight(panelHeight: Int = currentPanelHeight()) {
+        minimumHeight = panelHeight + currentImeBottomInset
+        requestLayout()
+    }
+
+    private fun currentPanelHeight(): Int {
+        val layoutHeight = (panelContainer.layoutParams as? LayoutParams)?.height ?: 0
+        return if (layoutHeight > 0) layoutHeight else panelContainer.height
     }
 
     private fun createActionButton(text: String, onClick: () -> Unit): TextView {
@@ -1614,7 +1688,7 @@ class AnswerPanelOverlay(
             val parentHeight = getContainerHeight()
             panelContainer.translationY = parentHeight.toFloat()
             panelContainer.animate()
-                .translationY(0f)
+                .translationY(-currentImeBottomInset.toFloat())
                 .setDuration(400)
                 .setInterpolator(DecelerateInterpolator(1.5f))
                 .start()
@@ -1625,6 +1699,7 @@ class AnswerPanelOverlay(
     }
 
     private fun animateOut() {
+        isClosing = true
         val parentHeight = getContainerHeight()
         panelContainer.animate()
             .translationY(parentHeight.toFloat())
@@ -1702,6 +1777,7 @@ class AnswerPanelOverlay(
                 val p = panelContainer.layoutParams as LayoutParams
                 p.height = value
                 panelContainer.layoutParams = p
+                updateImeReservedHeight(value)
             }
         }
         animator.start()

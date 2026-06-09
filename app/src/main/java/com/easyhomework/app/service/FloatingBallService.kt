@@ -462,12 +462,14 @@ class FloatingBallService : Service() {
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                // Keep the answer panel focusable so its EditText can own IME focus.
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT,
             ).apply {
                 gravity = Gravity.BOTTOM
+                softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
             }
 
             windowManager.addView(answerPanel, params)
