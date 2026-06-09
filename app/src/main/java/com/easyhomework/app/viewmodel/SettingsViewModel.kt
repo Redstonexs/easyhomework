@@ -154,12 +154,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun updateProviderName(id: String, name: String) {
-        val updatedList = _providerConfigs.value.map {
-            if (it.id == id) it.copy(name = name) else it
-        }
-        _providerConfigs.value = updatedList
         if (_activeProviderId.value == id) {
             _config.value = _config.value.copy(name = name)
+        }
+
+        _providerConfigs.value = _providerConfigs.value.map {
+            if (it.id == id) it.copy(name = name) else it
         }
     }
 

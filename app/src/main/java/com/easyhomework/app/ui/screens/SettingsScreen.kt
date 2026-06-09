@@ -2,6 +2,9 @@
 
 package com.easyhomework.app.ui.screens
 
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -80,6 +83,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -1216,9 +1220,12 @@ private fun SettingsTextField(
 
 @Composable
 private fun Footer() {
+    val context = LocalContext.current
+    val appVersionName = remember(context) { context.appVersionName() }
+
     Spacer(modifier = Modifier.height(8.dp))
     Text(
-        "EasyHomework v1.0.0",
+        "EasyHomework v$appVersionName",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.outline,
         modifier = Modifier
@@ -1234,6 +1241,16 @@ private fun Footer() {
             .padding(horizontal = 16.dp, vertical = 4.dp),
     )
     Spacer(modifier = Modifier.height(28.dp))
+}
+
+private fun Context.appVersionName(): String {
+    val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+    } else {
+        @Suppress("DEPRECATION")
+        packageManager.getPackageInfo(packageName, 0)
+    }
+    return packageInfo.versionName ?: "unknown"
 }
 
 private data class SetupStatus(
