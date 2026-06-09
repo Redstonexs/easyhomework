@@ -6,10 +6,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Path
+import android.graphics.Outline
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -22,7 +20,9 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.WindowInsets
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
@@ -36,6 +36,8 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
+import com.easyhomework.app.R
 import com.easyhomework.app.data.AppDatabase
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.LLMConfig
@@ -56,6 +58,7 @@ import io.noties.markwon.html.HtmlPlugin
 import io.noties.markwon.inlineparser.MarkwonInlineParserPlugin
 import io.noties.markwon.linkify.LinkifyPlugin
 import kotlin.math.abs
+import kotlin.math.max
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -111,6 +114,8 @@ class AnswerPanelOverlay(
         const val TIMELINE_RAIL_WIDTH_DP = 22f
         const val TAG_ASSISTANT_TIMELINE = "assistant_timeline"
         const val TAG_TIMELINE_ITEM = "timeline_item"
+        const val TAG_ANSWER_ACTIONS = "answer_actions"
+        const val SCROLL_BOTTOM_THRESHOLD_DP = 48f
         const val INLINE_MATH_DELIMITER = "\$"
         const val BLOCK_MATH_DELIMITER = "\$\$"
         const val STREAM_CURSOR = "▎"
@@ -123,6 +128,7 @@ class AnswerPanelOverlay(
     private lateinit var inputField: EditText
     private lateinit var sendButton: ImageView
     private lateinit var dragHandle: View
+    private lateinit var backToBottomButton: TextView
 
     private val palette = neutralPalette(serviceContext)
     private val bgColor = palette.scrim
@@ -144,6 +150,10 @@ class AnswerPanelOverlay(
     private val errorContainerColor = palette.errorContainer
 
     private val density = serviceContext.resources.displayMetrics.density
+    private val messageScrollSlop = ViewConfiguration.get(serviceContext).scaledTouchSlop
+    private var isAutoFollowEnabled = true
+    private var isUserScrollingMessages = false
+    private var messageScrollStartY = 0f
 
     // Drag state
     private var touchStartY = 0f
@@ -387,6 +397,15 @@ class AnswerPanelOverlay(
         scrollView = ScrollView(context).apply {
             isVerticalScrollBarEnabled = true
             isFillViewport = true
+            setOnTouchListener { _, event ->
+                handleMessageScrollTouch(event)
+                false
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                setOnScrollChangeListener { _, _, _, _, _ ->
+                    handleMessageScrollChanged()
+                }
+            }
         }
 
         messagesContainer = LinearLayout(context).apply {
@@ -395,23 +414,25 @@ class AnswerPanelOverlay(
         }
         scrollView.addView(messagesContainer)
 
-        panelContainer.addView(
-            scrollView,
-            LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f),
+        val messagesFrame = FrameLayout(context).apply {
+            addView(
+                scrollView,
+                FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT),
+            )
+        }
+        backToBottomButton = createBackToBottomButton()
+        messagesFrame.addView(
+            backToBottomButton,
+            FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                bottomMargin = dp(12f).toInt()
+            },
         )
 
-        // Action buttons row
-        val actionsRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20f).toInt(), 0, dp(20f).toInt(), dp(8f).toInt())
-        }
-
-        val copyBtn = createActionButton("📋 复制") { copyLastAnswer() }
-        val regenBtn = createActionButton("🔄 重新生成") { regenerateAnswer() }
-        actionsRow.addView(copyBtn)
-        actionsRow.addView(regenBtn)
-        panelContainer.addView(actionsRow)
+        panelContainer.addView(
+            messagesFrame,
+            LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f),
+        )
 
         // Input area
         val inputContainer = LinearLayout(context).apply {
@@ -468,7 +489,7 @@ class AnswerPanelOverlay(
             setColorFilter(onPrimaryColor)
             setOnClickListener { sendFollowUp() }
         }
-        sendButton.setImageBitmap(createSendIcon())
+        sendButton.setImageResource(R.drawable.ic_send)
 
         val sendParams = LinearLayout.LayoutParams(dp(48f).toInt(), dp(48f).toInt()).apply {
             marginStart = dp(10f).toInt()
@@ -509,7 +530,7 @@ class AnswerPanelOverlay(
             .withEndAction {
                 updateImeReservedHeight()
                 if (imeBottomInset > 0) {
-                    scrollToBottom()
+                    requestScrollToBottom(force = true)
                 }
             }
             .start()
@@ -540,49 +561,121 @@ class AnswerPanelOverlay(
         return if (layoutHeight > 0) layoutHeight else panelContainer.height
     }
 
-    private fun createActionButton(text: String, onClick: () -> Unit): TextView {
+    private fun createBackToBottomButton(): TextView {
         return TextView(context).apply {
-            this.text = text
+            text = "回到底部"
             setTextColor(onSurfaceVariantColor)
-            textSize = 13f
+            textSize = 12f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            gravity = Gravity.CENTER
             val bg = GradientDrawable().apply {
                 setColor(surfaceContainerHighColor)
-                cornerRadius = dp(20f)
+                setStroke(dp(1f).toInt(), outlineVariantColor)
+                cornerRadius = dp(18f)
             }
             background = bg
-            setPadding(dp(18f).toInt(), dp(10f).toInt(), dp(18f).toInt(), dp(10f).toInt())
-            val params = LinearLayout.LayoutParams(
-                LayoutParams.WRAP_CONTENT,
-                LayoutParams.WRAP_CONTENT,
-            ).apply {
-                marginEnd = dp(10f).toInt()
+            setPadding(dp(12f).toInt(), dp(8f).toInt(), dp(14f).toInt(), dp(8f).toInt())
+            setCompoundDrawables(createTintedIcon(R.drawable.ic_arrow_down, onSurfaceVariantColor, 14f), null, null, null)
+            compoundDrawablePadding = dp(6f).toInt()
+            visibility = GONE
+            setOnClickListener {
+                requestScrollToBottom(force = true)
             }
-            layoutParams = params
+        }
+    }
+
+    private fun handleMessageScrollTouch(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                isUserScrollingMessages = true
+                messageScrollStartY = event.y
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (abs(event.y - messageScrollStartY) > messageScrollSlop) {
+                    isAutoFollowEnabled = false
+                    updateBackToBottomButton()
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                isUserScrollingMessages = false
+                if (isScrolledToBottom()) {
+                    isAutoFollowEnabled = true
+                }
+                updateBackToBottomButton()
+            }
+        }
+    }
+
+    private fun handleMessageScrollChanged() {
+        if (isScrolledToBottom()) {
+            isAutoFollowEnabled = true
+        } else if (isUserScrollingMessages) {
+            isAutoFollowEnabled = false
+        }
+        updateBackToBottomButton()
+    }
+
+    private fun isScrolledToBottom(): Boolean {
+        val child = scrollView.getChildAt(0) ?: return true
+        val distanceToBottom = child.bottom - (scrollView.height + scrollView.scrollY)
+        return distanceToBottom <= dp(SCROLL_BOTTOM_THRESHOLD_DP)
+    }
+
+    private fun requestScrollToBottom(force: Boolean = false) {
+        if (force) {
+            isAutoFollowEnabled = true
+        }
+
+        if (!isAutoFollowEnabled) {
+            updateBackToBottomButton()
+            return
+        }
+
+        handler.postDelayed({
+            scrollView.fullScroll(View.FOCUS_DOWN)
+            isAutoFollowEnabled = true
+            updateBackToBottomButton()
+        }, 50)
+    }
+
+    private fun updateBackToBottomButton() {
+        if (!::backToBottomButton.isInitialized) return
+        backToBottomButton.visibility = if (!isAutoFollowEnabled && !isScrolledToBottom()) {
+            VISIBLE
+        } else {
+            GONE
+        }
+    }
+
+    private fun createMiniActionButton(iconRes: Int, label: String, onClick: () -> Unit): TextView {
+        return TextView(context).apply {
+            text = label
+            setTextColor(onSurfaceVariantColor)
+            textSize = 11f
+            gravity = Gravity.CENTER
+            minHeight = dp(30f).toInt()
+            val bg = GradientDrawable().apply {
+                setColor(surfaceContainerColor)
+                setStroke(dp(1f).toInt(), outlineVariantColor)
+                cornerRadius = dp(15f)
+            }
+            background = bg
+            setPadding(dp(10f).toInt(), dp(6f).toInt(), dp(10f).toInt(), dp(6f).toInt())
+            setCompoundDrawables(createTintedIcon(iconRes, onSurfaceVariantColor, 13f), null, null, null)
+            compoundDrawablePadding = dp(5f).toInt()
             setOnClickListener { onClick() }
         }
     }
 
-    private fun createSendIcon(): Bitmap {
-        val size = dp(24f).toInt()
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = onPrimaryColor
-            style = Paint.Style.FILL
+    private fun createTintedIcon(iconRes: Int, color: Int, sizeDp: Float) =
+        ContextCompat.getDrawable(context, iconRes)?.mutate()?.apply {
+            setTint(color)
+            val size = dp(sizeDp).toInt()
+            setBounds(0, 0, size, size)
         }
-        val path = Path().apply {
-            moveTo(size * 0.2f, size * 0.5f)
-            lineTo(size * 0.8f, size * 0.5f)
-            moveTo(size * 0.55f, size * 0.25f)
-            lineTo(size * 0.8f, size * 0.5f)
-            lineTo(size * 0.55f, size * 0.75f)
-        }
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = dp(2.5f)
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.strokeJoin = Paint.Join.ROUND
-        canvas.drawPath(path, paint)
-        return bitmap
+
+    private fun answerActionPayload(row: View): AnswerActionPayload? {
+        return row.getTag(R.id.answer_action_payload) as? AnswerActionPayload
     }
 
     // ---- Conversation Management ----
@@ -635,6 +728,11 @@ class AnswerPanelOverlay(
     private data class TimelineItem(
         val container: LinearLayout,
         val contentView: TextView,
+    )
+
+    private data class AnswerActionPayload(
+        val content: String,
+        val assistantMessageIndex: Int?,
     )
 
     private var currentThinkingText = StringBuilder()
@@ -761,7 +859,13 @@ class AnswerPanelOverlay(
                                     val fullText = currentStreamingText.toString()
                                     if (fullText.isNotBlank()) {
                                         val answerView = ensureAnswerTimelineView(loadingView)
-                                        updateTimelineItem(answerView, "回答", fullText, isLoading = false)
+                                        updateTimelineItem(
+                                            answerView,
+                                            "回答",
+                                            fullText,
+                                            isLoading = false,
+                                            answerMessageIndex = messages.size,
+                                        )
                                     }
 
                                     if (toolCallDepth >= MAX_TOOL_CALL_DEPTH) {
@@ -806,8 +910,15 @@ class AnswerPanelOverlay(
                                                 reasoningContent = currentThinkingText.toString().ifBlank { null },
                                             ),
                                         )
+                                        val answerMessageIndex = messages.lastIndex
                                         val answerView = ensureAnswerTimelineView(loadingView)
-                                        updateTimelineItem(answerView, "回答", fullText, isLoading = false)
+                                        updateTimelineItem(
+                                            answerView,
+                                            "回答",
+                                            fullText,
+                                            isLoading = false,
+                                            answerMessageIndex = answerMessageIndex,
+                                        )
                                     } else if (!contentReceived) {
                                         updateTimelineItem(
                                             loadingView,
@@ -895,11 +1006,18 @@ class AnswerPanelOverlay(
                                     reasoningContent = response.thinking?.ifBlank { null },
                                 ),
                             )
+                            val answerMessageIndex = messages.lastIndex
                             response.thinking?.takeIf { it.isNotBlank() }?.let {
                                 updateTimelineItem(loadingView, "思考", it, isLoading = false)
                             }
                             val answerView = ensureAnswerTimelineView(loadingView)
-                            updateTimelineItem(answerView, "回答", text, isLoading = false)
+                            updateTimelineItem(
+                                answerView,
+                                "回答",
+                                text,
+                                isLoading = false,
+                                answerMessageIndex = answerMessageIndex,
+                            )
                             scrollToBottom()
                             saveToHistory()
                         }
@@ -993,6 +1111,15 @@ class AnswerPanelOverlay(
                 thinkingText?.ifBlank { null },
             ),
         )
+        val assistantMessageIndex = messages.lastIndex
+
+        if (!fullText.isNullOrBlank()) {
+            withContext(Dispatchers.Main) {
+                currentAnswerView?.let { answerView ->
+                    bindAnswerActions(answerView, fullText, assistantMessageIndex)
+                }
+            }
+        }
 
         val timelineBody = currentTimelineBody
         for (toolCall in correctedToolCalls) {
@@ -1100,7 +1227,7 @@ class AnswerPanelOverlay(
 
         container.addView(bubble)
         messagesContainer.addView(container)
-        scrollToBottom()
+        requestScrollToBottom(force = true)
     }
 
     private fun addUserBubbleWithImage(text: String) {
@@ -1110,39 +1237,49 @@ class AnswerPanelOverlay(
             setPadding(dp(48f).toInt(), dp(4f).toInt(), 0, dp(8f).toInt())
         }
 
-        val imagePreview = ImageView(context).apply {
-            val maxSize = dp(160f).toInt()
-            val scale = minOf(
-                maxSize.toFloat() / screenshotBitmap.width,
-                maxSize.toFloat() / screenshotBitmap.height,
-                1f,
-            )
-            val scaledBitmap = Bitmap.createScaledBitmap(
-                screenshotBitmap,
-                (screenshotBitmap.width * scale).toInt(),
-                (screenshotBitmap.height * scale).toInt(),
-                true,
-            )
-            setImageBitmap(scaledBitmap)
-            scaleType = ImageView.ScaleType.CENTER_CROP
+        val imageWidth = max(1, screenshotBitmap.width)
+        val imageHeight = max(1, screenshotBitmap.height)
+        val maxPreviewWidth = minOf(
+            dp(240f).toInt(),
+            (resources.displayMetrics.widthPixels - dp(112f).toInt()).coerceAtLeast(dp(160f).toInt()),
+        )
+        val maxPreviewHeight = dp(180f).toInt()
+        val imageScale = minOf(
+            maxPreviewWidth.toFloat() / imageWidth,
+            maxPreviewHeight.toFloat() / imageHeight,
+            1f,
+        )
+        val previewWidth = max(dp(96f).toInt(), (imageWidth * imageScale).toInt())
+        val previewHeight = max(dp(64f).toInt(), (imageHeight * imageScale).toInt())
+        val imagePadding = dp(4f).toInt()
+
+        val imageFrame = RoundedClipFrameLayout(context).apply {
+            cornerRadiusPx = dp(20f)
             val bg = GradientDrawable().apply {
                 setColor(primaryColor)
-                cornerRadii = floatArrayOf(
-                    dp(20f), dp(20f), dp(6f), dp(6f),
-                    dp(20f), dp(20f), dp(20f), dp(20f),
-                )
+                cornerRadius = dp(20f)
             }
             background = bg
-            setPadding(dp(4f).toInt(), dp(4f).toInt(), dp(4f).toInt(), dp(4f).toInt())
         }
+        val imagePreview = ImageView(context).apply {
+            setImageBitmap(screenshotBitmap)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+        }
+        imageFrame.addView(
+            imagePreview,
+            FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
+                setMargins(imagePadding, imagePadding, imagePadding, imagePadding)
+            },
+        )
 
         val imageParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
+            previewWidth + imagePadding * 2,
+            previewHeight + imagePadding * 2,
         ).apply {
             bottomMargin = dp(4f).toInt()
         }
-        container.addView(imagePreview, imageParams)
+        container.addView(imageFrame, imageParams)
 
         if (text.isNotBlank()) {
             val bubble = TextView(context).apply {
@@ -1165,7 +1302,7 @@ class AnswerPanelOverlay(
         }
 
         messagesContainer.addView(container)
-        scrollToBottom()
+        requestScrollToBottom(force = true)
     }
 
     private fun addAssistantBubble(text: String, isLoading: Boolean): TextView {
@@ -1286,7 +1423,38 @@ class AnswerPanelOverlay(
             setPadding(dp(14f).toInt(), dp(10f).toInt(), dp(14f).toInt(), dp(10f).toInt())
             addView(createTimelineHeader(title, tone))
             addView(createTimelineContent(content, tone))
+            if (tone == TimelineTone.ANSWER) {
+                addView(createAnswerActionsRow())
+            }
         }
+    }
+
+    private fun createAnswerActionsRow(): LinearLayout {
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            tag = TAG_ANSWER_ACTIONS
+            setPadding(0, dp(10f).toInt(), 0, 0)
+            visibility = GONE
+        }
+
+        val copyButton = createMiniActionButton(R.drawable.ic_answer_copy, "复制") {
+            val payload = answerActionPayload(row) ?: return@createMiniActionButton
+            copyAnswer(payload.content)
+        }
+        val regenerateButton = createMiniActionButton(R.drawable.ic_answer_refresh, "重生成") {
+            val payload = answerActionPayload(row) ?: return@createMiniActionButton
+            regenerateAnswer(payload.content, payload.assistantMessageIndex, row)
+        }
+
+        row.addView(
+            copyButton,
+            LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                marginEnd = dp(8f).toInt()
+            },
+        )
+        row.addView(regenerateButton)
+        return row
     }
 
     private fun createTimelineHeader(title: String, tone: TimelineTone): LinearLayout {
@@ -1550,6 +1718,7 @@ class AnswerPanelOverlay(
         content: String,
         isLoading: Boolean,
         isError: Boolean = false,
+        answerMessageIndex: Int? = null,
     ) {
         handler.post {
             val itemContainer = findTimelineItemContainer(contentView)
@@ -1567,8 +1736,34 @@ class AnswerPanelOverlay(
             }
             if (!isLoading && !isError && title == "回答") {
                 expandTimelineItem(itemContainer)
+                bindAnswerActions(contentView, displayContent, answerMessageIndex)
+            } else {
+                hideAnswerActions(contentView)
             }
         }
+    }
+
+    private fun bindAnswerActions(contentView: TextView, content: String, assistantMessageIndex: Int?) {
+        val itemContainer = findTimelineItemContainer(contentView) ?: return
+        val actionsRow = findAnswerActionsRow(itemContainer) ?: return
+        actionsRow.setTag(R.id.answer_action_payload, AnswerActionPayload(content, assistantMessageIndex))
+        actionsRow.visibility = VISIBLE
+    }
+
+    private fun hideAnswerActions(contentView: TextView) {
+        val itemContainer = findTimelineItemContainer(contentView) ?: return
+        findAnswerActionsRow(itemContainer)?.visibility = GONE
+    }
+
+    private fun findAnswerActionsRow(itemContainer: LinearLayout): LinearLayout? {
+        val card = itemContainer.getChildAt(1) as? LinearLayout ?: return null
+        for (i in 0 until card.childCount) {
+            val child = card.getChildAt(i)
+            if (child is LinearLayout && child.tag == TAG_ANSWER_ACTIONS) {
+                return child
+            }
+        }
+        return null
     }
 
     private fun findTimelineItemContainer(view: View): LinearLayout? {
@@ -1590,48 +1785,88 @@ class AnswerPanelOverlay(
     }
 
     private fun scrollToBottom() {
-        handler.postDelayed({
-            scrollView.fullScroll(View.FOCUS_DOWN)
-        }, 50)
+        requestScrollToBottom()
     }
 
     // ---- Actions ----
 
-    private fun copyLastAnswer() {
-        val lastAssistant = messages.lastOrNull { it.role == ChatMessage.ROLE_ASSISTANT }
-        if (lastAssistant != null) {
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("answer", lastAssistant.content))
-            Toast.makeText(context, "答案已复制", Toast.LENGTH_SHORT).show()
-        }
+    private fun copyAnswer(content: String) {
+        if (content.isBlank()) return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("answer", content))
+        Toast.makeText(context, "答案已复制", Toast.LENGTH_SHORT).show()
     }
 
-    private fun regenerateAnswer() {
-        val lastUserIdx = messages.indexOfLast { it.role == ChatMessage.ROLE_USER }
-        if (lastUserIdx < 0 || lastUserIdx == messages.lastIndex) {
-            return
-        }
+    private fun regenerateAnswer(content: String, assistantMessageIndex: Int?, sourceView: View) {
+        val resolvedAssistantIndex = resolveAssistantMessageIndex(content, assistantMessageIndex)
+        val lastUserIdx = findPreviousUserIndex(resolvedAssistantIndex)
+        if (lastUserIdx < 0) return
 
         for (i in messages.lastIndex downTo lastUserIdx + 1) {
             messages.removeAt(i)
         }
 
-        for (i in messagesContainer.childCount - 1 downTo 0) {
-            val child = messagesContainer.getChildAt(i)
-            if (child is LinearLayout && child.tag == TAG_ASSISTANT_TIMELINE) {
-                messagesContainer.removeViewAt(i)
-            } else {
-                break
-            }
-        }
+        removeConversationViewsFrom(sourceView)
         currentTimelineBody = null
         currentAnswerView = null
         thinkingView = null
         thinkingContainer = null
         isThinkingPhase = false
+        toolCallDepth = 0
+        requestScrollToBottom(force = true)
 
         val loadingView = addAssistantBubble("", isLoading = true)
         sendToLLM(loadingView)
+    }
+
+    private fun resolveAssistantMessageIndex(content: String, preferredIndex: Int?): Int {
+        if (
+            preferredIndex != null &&
+            preferredIndex in messages.indices &&
+            messages[preferredIndex].role == ChatMessage.ROLE_ASSISTANT
+        ) {
+            return preferredIndex
+        }
+
+        for (i in messages.lastIndex downTo 0) {
+            val message = messages[i]
+            if (message.role == ChatMessage.ROLE_ASSISTANT && message.content == content) {
+                return i
+            }
+        }
+
+        return messages.indexOfLast { it.role == ChatMessage.ROLE_ASSISTANT }
+    }
+
+    private fun findPreviousUserIndex(assistantMessageIndex: Int): Int {
+        if (assistantMessageIndex !in messages.indices) return -1
+        for (i in assistantMessageIndex - 1 downTo 0) {
+            if (messages[i].role == ChatMessage.ROLE_USER) {
+                return i
+            }
+        }
+        return -1
+    }
+
+    private fun removeConversationViewsFrom(sourceView: View) {
+        val assistantContainer = findAssistantTimelineContainer(sourceView) ?: return
+        val startIndex = messagesContainer.indexOfChild(assistantContainer)
+        if (startIndex < 0) return
+
+        for (i in messagesContainer.childCount - 1 downTo startIndex) {
+            messagesContainer.removeViewAt(i)
+        }
+    }
+
+    private fun findAssistantTimelineContainer(view: View): View? {
+        var current: View? = view
+        while (current != null) {
+            if (current is LinearLayout && current.tag == TAG_ASSISTANT_TIMELINE) {
+                return current
+            }
+            current = current.parent as? View
+        }
+        return null
     }
 
     private fun saveToHistory() {
@@ -1787,5 +2022,22 @@ class AnswerPanelOverlay(
         hideHeightIndicatorRunnable?.let { heightIndicatorHandler.removeCallbacks(it) }
         heightIndicator?.animate()?.cancel()
         scope.cancel()
+    }
+}
+
+private class RoundedClipFrameLayout(context: Context) : FrameLayout(context) {
+    var cornerRadiusPx: Float = 0f
+        set(value) {
+            field = value
+            invalidateOutline()
+        }
+
+    init {
+        clipToOutline = true
+        outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height, cornerRadiusPx)
+            }
+        }
     }
 }
