@@ -42,6 +42,9 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val MAIN_LAUNCH_STABLE_DELAY_MS = 1_500L
+
+        /** Optional launch extra: which screen ("settings" or "history") to open on. */
+        const val EXTRA_START_DESTINATION = "start_destination"
     }
 
     private lateinit var preferencesManager: PreferencesManager
@@ -77,6 +80,7 @@ class MainActivity : ComponentActivity() {
         syncStaleFloatingBallState()
 
         CrashReporter.setStage(this, "main_activity_set_content")
+        val startDestination = intent?.getStringExtra(EXTRA_START_DESTINATION) ?: "settings"
         setContent {
             CompositionLocalProvider(
                 LifecycleLocalLifecycleOwner provides this@MainActivity,
@@ -103,6 +107,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         AppNavigationContent(
+                            startDestination = startDestination,
                             onToggleService = { enabled ->
                                 serviceEnabled = enabled
                                 if (enabled) {
@@ -125,6 +130,15 @@ class MainActivity : ComponentActivity() {
         scheduleMainLaunchStableMark()
         requestNotificationPermissionAfterFirstDraw()
         CrashReporter.setStage(this, "main_activity_ready")
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Re-launched (e.g. from the floating-ball menu) with a new target screen; rebuild onto it.
+        if (intent.hasExtra(EXTRA_START_DESTINATION)) {
+            setIntent(intent)
+            recreate()
+        }
     }
 
     override fun onDestroy() {
@@ -207,10 +221,11 @@ fun AppNavigationContent(
     onToggleService: (Boolean) -> Unit,
     isServiceRunning: Boolean,
     onResyncState: () -> Unit,
+    startDestination: String = "settings",
 ) {
     val navController = rememberNavController()
 
-    NavHost(navController = navController, startDestination = "settings") {
+    NavHost(navController = navController, startDestination = startDestination) {
         composable("settings") {
             val viewModel: SettingsViewModel = viewModel()
             SettingsScreen(

@@ -34,6 +34,23 @@ enum class ThinkingDepth(val displayName: String, val budgetTokens: Int, val ope
 }
 
 /**
+ * Default way a captured question is sent to the model.
+ * Resolved against the active model's vision capability at search time.
+ */
+enum class SearchSendMode(val displayName: String, val summary: String) {
+    AUTO("自动（推荐）", "看模型能力：识图模型发图+文字，纯文字模型发文字"),
+    TEXT_ONLY("纯文字", "只发送 OCR 识别出的文字"),
+    IMAGE_ONLY("仅图片", "识图模型只发送截图，不附带 OCR 文字"),
+    ;
+
+    companion object {
+        fun fromString(value: String?): SearchSendMode {
+            return entries.find { it.name == value } ?: AUTO
+        }
+    }
+}
+
+/**
  * Source of model capability information.
  */
 enum class CapabilitySource(val displayName: String) {

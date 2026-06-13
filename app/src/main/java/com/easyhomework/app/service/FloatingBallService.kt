@@ -1,5 +1,8 @@
 package com.easyhomework.app.service
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.PendingIntent
@@ -8,17 +11,24 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.easyhomework.app.EasyHomeworkApp
@@ -28,6 +38,7 @@ import com.easyhomework.app.ScreenCapturePermissionActivity
 import com.easyhomework.app.overlay.AnswerPanelOverlay
 import com.easyhomework.app.overlay.FloatingBallView
 import com.easyhomework.app.overlay.RegionSelectorOverlay
+import com.easyhomework.app.ui.theme.neutralPalette
 import com.easyhomework.app.util.PreferencesManager
 
 /**
@@ -46,11 +57,14 @@ class FloatingBallService : Service() {
     private var floatingBallView: FloatingBallView? = null
     private var regionSelector: RegionSelectorOverlay? = null
     private var answerPanel: AnswerPanelOverlay? = null
+    private var ballMenuView: View? = null
     private var lastRegionScreenshot: Bitmap? = null
     private var awaitingScreenshotResult = false
 
     private var ballParams: WindowManager.LayoutParams? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val palette by lazy { neutralPalette(this) }
+    private val idleFadeRunnable = Runnable { fadeBallToIdle() }
 
     // Drag tracking
     private var initialX = 0
@@ -76,7 +90,16 @@ class FloatingBallService : Service() {
         private const val BALL_SIZE_NORMAL = 52
         private const val BALL_TOUCH_SIZE_MINI = 48 // Much larger touch target for mini ball
         private const val DRAG_SLOP_DP = 8f
-        private const val LONG_PRESS_DURATION = 800L
+        private const val LONG_PRESS_DURATION = 500L
+
+        // Delay between hiding the ball and grabbing the frame, so the ball isn't in the shot.
+        // Kept just long enough for the hide to reach the compositor (a few frames).
+        private const val CAPTURE_HIDE_DELAY_MS = 120L
+
+        private const val EDGE_MARGIN_DP = 8f
+        private const val SNAP_ANIM_MS = 220L
+        private const val IDLE_FADE_DELAY_MS = 4_000L
+        private const val IDLE_ALPHA = 0.4f
 
         private var instance: FloatingBallService? = null
 
@@ -146,6 +169,8 @@ class FloatingBallService : Service() {
     override fun onDestroy() {
         instance = null
         handler.removeCallbacks(longPressRunnable)
+        cancelIdleFade()
+        removeBallMenu()
         removeFloatingBall()
         removeRegionSelector()
         removeAnswerPanel()
@@ -212,6 +237,8 @@ class FloatingBallService : Service() {
             ?.setDuration(400)
             ?.setInterpolator(OvershootInterpolator())
             ?.start()
+
+        scheduleIdleFade()
     }
 
     private fun removeFloatingBall() {
@@ -232,12 +259,15 @@ class FloatingBallService : Service() {
     }
 
     fun hideFloatingBall() {
+        cancelIdleFade()
         floatingBallView?.visibility = View.GONE
     }
 
     fun showFloatingBallAgain() {
         awaitingScreenshotResult = false
         floatingBallView?.visibility = View.VISIBLE
+        restoreBallAlpha()
+        scheduleIdleFade()
     }
 
     // ---- Touch Handling ----
@@ -246,6 +276,8 @@ class FloatingBallService : Service() {
         val dragSlop = dragSlopPx()
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
+                cancelIdleFade()
+                restoreBallAlpha()
                 initialX = ballParams?.x ?: 0
                 initialY = ballParams?.y ?: 0
                 initialTouchX = event.rawX
@@ -296,15 +328,21 @@ class FloatingBallService : Service() {
                     // Click: trigger screenshot
                     onFloatingBallClicked()
                 } else {
-                    // Save position
-                    preferencesManager.floatingBallX = ballParams?.x ?: 0
-                    preferencesManager.floatingBallY = ballParams?.y ?: 0
+                    // Snap to nearest edge (or just persist the dropped position).
+                    if (preferencesManager.ballEdgeSnap) {
+                        snapToNearestEdge()
+                    } else {
+                        preferencesManager.floatingBallX = ballParams?.x ?: 0
+                        preferencesManager.floatingBallY = ballParams?.y ?: 0
+                    }
+                    scheduleIdleFade()
                 }
             }
 
             MotionEvent.ACTION_CANCEL -> {
                 handler.removeCallbacks(longPressRunnable)
                 view.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
+                scheduleIdleFade()
             }
         }
     }
@@ -316,23 +354,215 @@ class FloatingBallService : Service() {
     }
 
     /**
-     * Long press handler — closes the floating ball service.
-     * Syncs the enabled state with preferences so the in-app toggle reflects the change.
+     * Long press handler — opens a small menu (设置 / 历史 / 关闭) instead of immediately
+     * closing, so a long press is no longer a destructive accident.
      */
     private fun onLongPress() {
-        // Haptic feedback
+        showBallMenu()
+    }
+
+    // ---- Edge snap & idle fade ----
+
+    private fun dp(value: Float): Float = value * resources.displayMetrics.density
+
+    /**
+     * Animate the ball to whichever vertical screen edge it is closest to and persist the spot.
+     */
+    private fun snapToNearestEdge() {
+        val params = ballParams ?: return
+        val view = floatingBallView ?: return
+        val ballSize = view.width.takeIf { it > 0 } ?: params.width
+        val margin = dp(EDGE_MARGIN_DP).toInt()
+        val screenWidth = resources.displayMetrics.widthPixels
+        val screenHeight = resources.displayMetrics.heightPixels
+
+        val leftTarget = margin
+        val rightTarget = screenWidth - ballSize - margin
+        val targetX = if (params.x + ballSize / 2 < screenWidth / 2) leftTarget else rightTarget
+        val maxY = (screenHeight - ballSize - margin).coerceAtLeast(margin)
+        val targetY = params.y.coerceIn(margin, maxY)
+        val startX = params.x
+        val startY = params.y
+
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = SNAP_ANIM_MS
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { animator ->
+                val f = animator.animatedValue as Float
+                params.x = (startX + (targetX - startX) * f).toInt()
+                params.y = (startY + (targetY - startY) * f).toInt()
+                try {
+                    windowManager.updateViewLayout(view, params)
+                } catch (_: Exception) {}
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    preferencesManager.floatingBallX = params.x
+                    preferencesManager.floatingBallY = params.y
+                }
+            })
+            start()
+        }
+    }
+
+    private fun scheduleIdleFade() {
+        cancelIdleFade()
+        if (!preferencesManager.ballIdleFade) return
+        handler.postDelayed(idleFadeRunnable, IDLE_FADE_DELAY_MS)
+    }
+
+    private fun cancelIdleFade() {
+        handler.removeCallbacks(idleFadeRunnable)
+    }
+
+    private fun fadeBallToIdle() {
+        val view = floatingBallView ?: return
+        if (view.visibility != View.VISIBLE || ballMenuView != null) return
+        if (!preferencesManager.ballIdleFade) return
+        view.animate().alpha(IDLE_ALPHA).setDuration(400).start()
+    }
+
+    private fun restoreBallAlpha() {
+        floatingBallView?.let { ball ->
+            if (ball.alpha < 1f) {
+                ball.animate().alpha(1f).setDuration(150).start()
+            }
+        }
+    }
+
+    // ---- Long-press menu ----
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun showBallMenu() {
+        if (ballMenuView != null) return
+        cancelIdleFade()
+        restoreBallAlpha()
         floatingBallView?.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
 
-        // Shrink animation and close
-        floatingBallView?.animate()
-            ?.scaleX(0f)?.scaleY(0f)?.alpha(0f)
-            ?.setDuration(300)
-            ?.withEndAction {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(palette.surface)
+                cornerRadius = dp(18f)
+            }
+            elevation = dp(12f)
+            isClickable = true
+            val vPad = dp(6f).toInt()
+            setPadding(0, vPad, 0, vPad)
+            addView(menuRow("设置") { openMain("settings") })
+            addView(menuDivider())
+            addView(menuRow("历史记录") { openMain("history") })
+            addView(menuDivider())
+            addView(menuRow("关闭悬浮球", danger = true) { closeFromMenu() })
+        }
+
+        val scrim = FrameLayout(this).apply {
+            setBackgroundColor(Color.parseColor("#66000000"))
+            isFocusableInTouchMode = true
+            setOnClickListener { removeBallMenu() }
+            setOnKeyListener { _, keyCode, keyEvent ->
+                if (keyCode == KeyEvent.KEYCODE_BACK && keyEvent.action == KeyEvent.ACTION_UP) {
+                    removeBallMenu()
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+        scrim.addView(
+            card,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.CENTER },
+        )
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        )
+
+        try {
+            windowManager.addView(scrim, params)
+            ballMenuView = scrim
+            scrim.requestFocus()
+            card.alpha = 0f
+            card.scaleX = 0.92f
+            card.scaleY = 0.92f
+            card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(160).start()
+        } catch (e: Exception) {
+            ballMenuView = null
+            Toast.makeText(this, "菜单打开失败: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_SHORT).show()
+            scheduleIdleFade()
+        }
+    }
+
+    private fun menuRow(label: String, danger: Boolean = false, onClick: () -> Unit): TextView {
+        return TextView(this).apply {
+            text = label
+            textSize = 16f
+            setTextColor(if (danger) palette.error else palette.onSurface)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(28f).toInt(), dp(14f).toInt(), dp(56f).toInt(), dp(14f).toInt())
+            isClickable = true
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun menuDivider(): View {
+        return View(this).apply {
+            setBackgroundColor(palette.outlineVariant)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1)
+        }
+    }
+
+    private fun removeBallMenu() {
+        ballMenuView?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (_: Exception) {}
+        }
+        ballMenuView = null
+        scheduleIdleFade()
+    }
+
+    private fun openMain(destination: String) {
+        removeBallMenu()
+        val intent = Intent(this, MainActivity::class.java).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            )
+            putExtra(MainActivity.EXTRA_START_DESTINATION, destination)
+        }
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "打开失败: ${e.message ?: e.javaClass.simpleName}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun closeFromMenu() {
+        removeBallMenu()
+        val ball = floatingBallView
+        if (ball == null) {
+            preferencesManager.isFloatingBallEnabled = false
+            stopSelf()
+            return
+        }
+        ball.animate()
+            .scaleX(0f).scaleY(0f).alpha(0f)
+            .setDuration(250)
+            .withEndAction {
                 preferencesManager.isFloatingBallEnabled = false
                 Toast.makeText(this, "悬浮球已关闭", Toast.LENGTH_SHORT).show()
                 stopSelf()
             }
-            ?.start()
+            .start()
     }
 
     // ---- Screenshot Flow ----
@@ -372,7 +602,7 @@ class FloatingBallService : Service() {
             hideFloatingBall()
             floatingBallView?.postDelayed({
                 ScreenCaptureService.requestCapture()
-            }, 250)
+            }, CAPTURE_HIDE_DELAY_MS)
         } else {
             awaitingScreenshotResult = true
             val intent = Intent(this, ScreenCapturePermissionActivity::class.java).apply {
@@ -516,7 +746,7 @@ class FloatingBallService : Service() {
 
         return NotificationCompat.Builder(this, EasyHomeworkApp.CHANNEL_FLOATING_BALL)
             .setContentTitle("EasyHomework 运行中")
-            .setContentText("点击截屏搜题 · 长按关闭")
+            .setContentText("点击截屏搜题 · 长按打开菜单")
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setOngoing(true)

@@ -9,6 +9,7 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.easyhomework.app.model.SearchSendMode
 import com.easyhomework.app.ocr.SmartRegionDetector
 import com.easyhomework.app.ocr.TextRecognitionManager
 import com.easyhomework.app.ui.theme.neutralPalette
@@ -18,6 +19,7 @@ import kotlin.math.min
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -92,9 +94,17 @@ class RegionSelectorOverlay(
     private val smartDetector = SmartRegionDetector(context)
     private val preferencesManager = PreferencesManager(context)
     private val isVisionModel = preferencesManager.getLLMConfig().supportsVisionInput()
+    private val sendMode = preferencesManager.defaultSearchMode
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var isLoading = true
     private var isConfirming = false
+
+    // True while a high-confidence region is briefly shown before auto-search; a tap cancels it.
+    private var isAwaitingAutoSubmit = false
+    private var autoSubmitJob: Job? = null
+
+    // Text blocks from the detection pass, reused to assemble OCR text without a second pass.
+    private var detectedBlocks: List<SmartRegionDetector.TextBlockInfo> = emptyList()
 
     // Status text
     private val statusText: TextView
@@ -106,11 +116,17 @@ class RegionSelectorOverlay(
 
     private companion object {
         const val AUTO_SUBMIT_CONFIDENCE = 0.82f
-        const val AUTO_SUBMIT_DELAY_MS = 450L
+        const val AUTO_SUBMIT_DELAY_MS = 480L
         const val STATUS_HIDE_DELAY_MS = 1600L
         const val CONFIRM_FAILURE_DELAY_MS = 2000L
         const val CROP_PADDING_RATIO = 0.02f
         const val MIN_CROP_PADDING_PX = 8f
+
+        // Minimum non-whitespace chars for reused block text to be trusted without a dedicated OCR pass.
+        const val MEANINGFUL_TEXT_MIN_CHARS = 6
+
+        // A detection block counts as "inside" the selection when this share of it overlaps.
+        const val BLOCK_OVERLAP_RATIO = 0.35f
     }
 
     enum class Handle {
@@ -158,29 +174,16 @@ class RegionSelectorOverlay(
             onCancel?.invoke()
         }
 
-        // Direct image button (for vision models)
-        val directImageBtn = if (isVisionModel) {
-            createButton("直接识图", palette.warning) {
-                confirmSelection(sendDirectImage = true)
-            }
-        } else {
-            null
-        }
-
-        // Confirm OCR button
-        val confirmBtn = createButton("✓ OCR 识字", palette.primary) {
-            confirmSelection(sendDirectImage = false)
+        // Single one-tap search action. How the question is sent (image / text / both)
+        // is decided by the saved default mode + the active model's vision capability.
+        val searchBtn = createButton("🔍 搜题", palette.primary) {
+            confirmSelection()
         }
 
         buttonBar.addView(cancelBtn)
         val spacer = View(context)
         buttonBar.addView(spacer, LinearLayout.LayoutParams(24, 1))
-        if (directImageBtn != null) {
-            buttonBar.addView(directImageBtn)
-            val spacer2 = View(context)
-            buttonBar.addView(spacer2, LinearLayout.LayoutParams(24, 1))
-        }
-        buttonBar.addView(confirmBtn)
+        buttonBar.addView(searchBtn)
 
         val buttonParams = LayoutParams(
             LayoutParams.MATCH_PARENT,
@@ -202,26 +205,17 @@ class RegionSelectorOverlay(
                     smartDetector.detectQuestionRegion(screenshot)
                 }
                 selectionRect = RectF(result.suggestedRegion)
+                detectedBlocks = result.allTextBlocks
                 isLoading = false
                 invalidate()
 
                 if (allowAutoSubmit && result.confidence >= AUTO_SUBMIT_CONFIDENCE) {
-                    statusText.text = if (isVisionModel) {
-                        "已自动框选，正在直接识图..."
-                    } else {
-                        "已自动框选，正在 OCR 搜题..."
-                    }
-                    statusText.visibility = View.VISIBLE
-                    buttonBar.visibility = View.GONE
-                    delay(AUTO_SUBMIT_DELAY_MS)
-                    if (isAttachedToWindow && !isConfirming) {
-                        confirmSelection(sendDirectImage = isVisionModel)
-                    }
+                    scheduleAutoSubmit()
                 } else {
                     val message = if (allowAutoSubmit) {
-                        "已自动框选，请确认或手动调整"
+                        "已自动框选，拖动可调整，点击搜题"
                     } else {
-                        "已自动框选，可手动调整后提交"
+                        "请拖动调整选区，然后点击搜题"
                     }
                     showManualControls(message)
                 }
@@ -235,11 +229,37 @@ class RegionSelectorOverlay(
                     screenshot.width * 0.9f,
                     screenshot.height * 0.75f,
                 )
+                detectedBlocks = emptyList()
                 isLoading = false
-                showManualControls("自动检测失败，请手动调整选区")
+                showManualControls("自动检测失败，请手动框选后点击搜题")
                 invalidate()
             }
         }
+    }
+
+    /**
+     * Briefly show the detected region, then auto-search. A tap during this window cancels
+     * the auto-search and drops into manual adjustment ("straight to answer", but escapable).
+     */
+    @SuppressLint("SetTextI18n")
+    private fun scheduleAutoSubmit() {
+        isAwaitingAutoSubmit = true
+        statusText.text = "✓ 已识别，正在搜题…（点按可调整）"
+        statusText.visibility = View.VISIBLE
+        buttonBar.visibility = View.GONE
+        autoSubmitJob = scope.launch {
+            delay(AUTO_SUBMIT_DELAY_MS)
+            if (isAttachedToWindow && !isConfirming && isAwaitingAutoSubmit) {
+                isAwaitingAutoSubmit = false
+                confirmSelection()
+            }
+        }
+    }
+
+    private fun cancelAutoSubmit() {
+        autoSubmitJob?.cancel()
+        autoSubmitJob = null
+        isAwaitingAutoSubmit = false
     }
 
     private fun createButton(text: String, bgColor: Int, onClick: () -> Unit): TextView {
@@ -341,6 +361,13 @@ class RegionSelectorOverlay(
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (isLoading || isConfirming) return true
+
+        // A touch while the auto-search countdown is running cancels it and hands control
+        // back to the user, who can immediately drag to adjust the selection.
+        if (isAwaitingAutoSubmit && event.action == MotionEvent.ACTION_DOWN) {
+            cancelAutoSubmit()
+            showManualControls("可拖动调整选区，然后点击搜题")
+        }
 
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
@@ -469,65 +496,105 @@ class RegionSelectorOverlay(
     }
 
     @SuppressLint("SetTextI18n")
-    private fun confirmSelection(sendDirectImage: Boolean) {
+    private fun confirmSelection() {
         if (isConfirming) return
         isConfirming = true
+        cancelAutoSubmit()
+
+        statusText.text = "正在搜题…"
+        statusText.visibility = View.VISIBLE
+        buttonBar.visibility = View.GONE
 
         scope.launch {
-            if (sendDirectImage) {
-                // Direct image mode: skip OCR, send bitmap directly
-                statusText.text = "准备发送图片..."
-                statusText.visibility = View.VISIBLE
-                buttonBar.visibility = View.GONE
+            try {
+                val croppedBitmap = cropSelectedBitmap()
+                val assembledText = assembleTextFromBlocks(selectionRect)
 
-                try {
-                    val croppedBitmap = cropSelectedBitmap()
-                    onConfirm?.invoke(croppedBitmap, "", true)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    showConfirmFailure("处理失败: ${e.message}")
-                }
-            } else {
-                // OCR mode
-                statusText.text = "正在识别文字..."
-                statusText.visibility = View.VISIBLE
-                buttonBar.visibility = View.GONE
+                when (resolvedMode()) {
+                    ResolvedMode.IMAGE_WITH_TEXT ->
+                        onConfirm?.invoke(croppedBitmap, assembledText, true)
 
-                try {
-                    val croppedBitmap = cropSelectedBitmap()
-                    val recognizer = TextRecognitionManager(context)
-                    val result = try {
-                        recognizer.recognizeText(croppedBitmap)
-                    } finally {
-                        recognizer.close()
-                    }
+                    ResolvedMode.IMAGE_ONLY ->
+                        onConfirm?.invoke(croppedBitmap, "", true)
 
-                    when {
-                        result.error != null -> {
-                            showConfirmFailure("识别失败: ${result.error}")
+                    ResolvedMode.TEXT -> {
+                        // Reuse the detection-pass text when it's solid; only fall back to a
+                        // dedicated (slower) OCR pass when the reused text is too thin to trust.
+                        val text = if (hasMeaningfulText(assembledText)) {
+                            assembledText
+                        } else {
+                            statusText.text = "正在识别文字…"
+                            runDedicatedOcr(croppedBitmap)
                         }
-                        result.text.isBlank() -> {
+                        if (text.isBlank()) {
                             val message = if (isVisionModel) {
-                                "未识别到文字，可改用直接识图或重新选择区域"
+                                "未识别到文字，可改用仅图片或重新框选"
                             } else {
-                                "未识别到文字，请重新选择区域"
+                                "未识别到文字，请重新框选"
                             }
                             showConfirmFailure(message)
-                        }
-                        else -> {
-                            val bitmap = croppedBitmap
-                            val text = result.text
-                            onConfirm?.invoke(bitmap, text, false)
+                        } else {
+                            onConfirm?.invoke(croppedBitmap, text, false)
                         }
                     }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    showConfirmFailure("识别失败: ${e.message}")
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                showConfirmFailure("处理失败: ${e.message}")
             }
         }
+    }
+
+    private enum class ResolvedMode { IMAGE_WITH_TEXT, IMAGE_ONLY, TEXT }
+
+    /** Resolve the saved send mode against whether the active model can actually see images. */
+    private fun resolvedMode(): ResolvedMode {
+        return when (sendMode) {
+            SearchSendMode.AUTO -> if (isVisionModel) ResolvedMode.IMAGE_WITH_TEXT else ResolvedMode.TEXT
+            SearchSendMode.IMAGE_ONLY -> if (isVisionModel) ResolvedMode.IMAGE_ONLY else ResolvedMode.TEXT
+            SearchSendMode.TEXT_ONLY -> ResolvedMode.TEXT
+        }
+    }
+
+    private suspend fun runDedicatedOcr(bitmap: Bitmap): String {
+        val recognizer = TextRecognitionManager(context)
+        return try {
+            recognizer.recognizeText(bitmap).text
+        } finally {
+            recognizer.close()
+        }
+    }
+
+    private fun hasMeaningfulText(text: String): Boolean =
+        text.count { !it.isWhitespace() } >= MEANINGFUL_TEXT_MIN_CHARS
+
+    /**
+     * Assemble question text from the detection-pass blocks that fall inside the current
+     * selection, ordered top-to-bottom. Avoids a second full OCR pass in the common case.
+     */
+    private fun assembleTextFromBlocks(sel: RectF): String {
+        if (detectedBlocks.isEmpty()) return ""
+        val selRect = Rect(sel.left.toInt(), sel.top.toInt(), sel.right.toInt(), sel.bottom.toInt())
+        val selected = detectedBlocks.filter { block ->
+            val r = block.rect
+            selRect.contains(r.centerX(), r.centerY()) || overlapRatio(r, selRect) >= BLOCK_OVERLAP_RATIO
+        }
+        if (selected.isEmpty()) return ""
+        return selected
+            .sortedWith(compareBy<SmartRegionDetector.TextBlockInfo> { it.rect.top }.thenBy { it.rect.left })
+            .joinToString("\n") { it.text.trim() }
+            .replace(Regex("\\n{3,}"), "\n\n")
+            .trim()
+    }
+
+    /** Share of [block] that overlaps [sel], from 0 to 1. */
+    private fun overlapRatio(block: Rect, sel: Rect): Float {
+        val interW = (min(block.right, sel.right) - max(block.left, sel.left)).coerceAtLeast(0)
+        val interH = (min(block.bottom, sel.bottom) - max(block.top, sel.top)).coerceAtLeast(0)
+        val blockArea = block.width().toLong() * block.height().toLong()
+        if (blockArea <= 0L) return 0f
+        return (interW.toLong() * interH.toLong()).toFloat() / blockArea.toFloat()
     }
 
     private fun showConfirmFailure(message: String) {

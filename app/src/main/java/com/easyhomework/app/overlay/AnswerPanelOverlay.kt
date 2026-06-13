@@ -115,6 +115,7 @@ class AnswerPanelOverlay(
         const val TAG_ASSISTANT_TIMELINE = "assistant_timeline"
         const val TAG_TIMELINE_ITEM = "timeline_item"
         const val TAG_ANSWER_ACTIONS = "answer_actions"
+        const val TAG_RETRY_ROW = "retry_row"
         const val SCROLL_BOTTOM_THRESHOLD_DP = 48f
         const val INLINE_MATH_DELIMITER = "\$"
         const val BLOCK_MATH_DELIMITER = "\$\$"
@@ -694,7 +695,8 @@ class AnswerPanelOverlay(
             val requestText = PromptTemplates.buildOcrQuestionPrompt(recognizedText)
             val userMessage = ChatMessage.user(requestText)
             messages.add(userMessage)
-            addUserBubble(recognizedText)
+            // Show the cropped question thumbnail above the OCR text so the user can see what was sent.
+            addUserBubbleWithImage(recognizedText)
         }
 
         val loadingView = addAssistantBubble("", isLoading = true)
@@ -1724,7 +1726,11 @@ class AnswerPanelOverlay(
             val itemContainer = findTimelineItemContainer(contentView)
             updateTimelineTitle(itemContainer, title)
             contentView.setTextColor(if (isError) errorColor else onSurfaceColor)
-            val displayContent = if (isLoading && content.isBlank()) createLoadingDots().toString() else content
+            val displayContent = when {
+                isError -> humanizeError(content)
+                isLoading && content.isBlank() -> createLoadingDots().toString()
+                else -> content
+            }
             if (isError) {
                 contentView.text = displayContent
             } else if (title == "回答") {
@@ -1737,6 +1743,12 @@ class AnswerPanelOverlay(
             if (!isLoading && !isError && title == "回答") {
                 expandTimelineItem(itemContainer)
                 bindAnswerActions(contentView, displayContent, answerMessageIndex)
+            } else if (isError) {
+                // Errors start life as a collapsed "思考" chip — expand so the message is visible,
+                // and offer a one-tap retry instead of forcing a whole new capture.
+                expandTimelineItem(itemContainer)
+                attachRetryAction(contentView)
+                hideAnswerActions(contentView)
             } else {
                 hideAnswerActions(contentView)
             }
@@ -1817,6 +1829,68 @@ class AnswerPanelOverlay(
 
         val loadingView = addAssistantBubble("", isLoading = true)
         sendToLLM(loadingView)
+    }
+
+    /**
+     * Add a 重试 button below an error message. On an error no assistant message was recorded,
+     * so retrying just re-sends the unchanged message list (the last entry is the user's question).
+     */
+    private fun attachRetryAction(contentView: TextView) {
+        val itemContainer = findTimelineItemContainer(contentView) ?: return
+        val card = itemContainer.getChildAt(1) as? LinearLayout ?: return
+        if (card.findViewWithTag<View>(TAG_RETRY_ROW) != null) return
+
+        val retryButton = createMiniActionButton(R.drawable.ic_answer_refresh, "重试") {
+            retryLastRequest(contentView)
+        }
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            tag = TAG_RETRY_ROW
+            setPadding(0, dp(10f).toInt(), 0, 0)
+            addView(retryButton)
+        }
+        card.addView(row)
+    }
+
+    private fun retryLastRequest(errorView: TextView) {
+        removeConversationViewsFrom(errorView)
+        currentTimelineBody = null
+        currentAnswerView = null
+        thinkingView = null
+        thinkingContainer = null
+        isThinkingPhase = false
+        toolCallDepth = 0
+        requestScrollToBottom(force = true)
+
+        val loadingView = addAssistantBubble("", isLoading = true)
+        sendToLLM(loadingView)
+    }
+
+    /**
+     * Turn raw API/network error strings into a short, actionable Chinese message,
+     * keeping the original text as a detail line for the less obvious cases.
+     */
+    private fun humanizeError(raw: String): String {
+        val r = raw.lowercase()
+        return when {
+            r.contains("401") || r.contains("403") || r.contains("unauthorized") ||
+                r.contains("invalid_api_key") || r.contains("invalid api key") ->
+                "API 密钥无效或未授权。请在设置中检查密钥是否正确、是否与所选服务商匹配。\n\n详情：$raw"
+            r.contains("429") || r.contains("rate limit") || r.contains("too many requests") ||
+                r.contains("quota") || r.contains("额度") || r.contains("余额") ->
+                "请求过于频繁或额度不足。请稍后再试，或检查账户余额/额度。\n\n详情：$raw"
+            r.contains("timeout") || r.contains("timed out") || r.contains("超时") ->
+                "请求超时。请检查网络后点击重试。"
+            r.contains("unable to resolve host") || r.contains("unknownhost") ||
+                r.contains("failed to connect") || r.contains("network error") ||
+                r.contains("connection") ->
+                "网络连接失败。请检查网络连接或设置中的 API 地址后点击重试。\n\n详情：$raw"
+            r.contains("404") ->
+                "接口地址不存在（404）。请检查设置中的 API 端点与路径是否正确。\n\n详情：$raw"
+            r.contains("500") || r.contains("502") || r.contains("503") || r.contains("504") ->
+                "服务暂时不可用。请稍后点击重试。\n\n详情：$raw"
+            else -> raw
+        }
     }
 
     private fun resolveAssistantMessageIndex(content: String, preferredIndex: Int?): Int {

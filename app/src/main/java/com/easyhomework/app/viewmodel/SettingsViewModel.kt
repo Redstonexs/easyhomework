@@ -7,6 +7,8 @@ import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.model.ModelInfo
+import com.easyhomework.app.model.ProviderPreset
+import com.easyhomework.app.model.SearchSendMode
 import com.easyhomework.app.network.LLMRepository
 import com.easyhomework.app.util.CrashReporter
 import com.easyhomework.app.util.PreferencesManager
@@ -48,6 +50,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _autoSubmitDetectedRegion = MutableStateFlow(true)
     val autoSubmitDetectedRegion: StateFlow<Boolean> = _autoSubmitDetectedRegion.asStateFlow()
 
+    private val _defaultSearchMode = MutableStateFlow(SearchSendMode.AUTO)
+    val defaultSearchMode: StateFlow<SearchSendMode> = _defaultSearchMode.asStateFlow()
+
+    private val _ballEdgeSnap = MutableStateFlow(true)
+    val ballEdgeSnap: StateFlow<Boolean> = _ballEdgeSnap.asStateFlow()
+
+    private val _ballIdleFade = MutableStateFlow(true)
+    val ballIdleFade: StateFlow<Boolean> = _ballIdleFade.asStateFlow()
+
+    private val _showSetupWizard = MutableStateFlow(false)
+    val showSetupWizard: StateFlow<Boolean> = _showSetupWizard.asStateFlow()
+
     private val _latestCrashReport = MutableStateFlow(CrashReporter.readLatestCrash(application))
     val latestCrashReport: StateFlow<String?> = _latestCrashReport.asStateFlow()
 
@@ -69,6 +83,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                         providerConfigs = configs,
                         activeProviderId = activeConfig.id,
                         autoSubmitDetectedRegion = preferencesManager.autoSubmitDetectedRegion,
+                        defaultSearchMode = preferencesManager.defaultSearchMode,
+                        ballEdgeSnap = preferencesManager.ballEdgeSnap,
+                        ballIdleFade = preferencesManager.ballIdleFade,
+                        showSetupWizard = !preferencesManager.hasCompletedSetupWizard && activeConfig.apiKey.isBlank(),
                     )
                 }
             }
@@ -79,6 +97,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     _providerConfigs.value = loaded.providerConfigs
                     _activeProviderId.value = loaded.activeProviderId
                     _autoSubmitDetectedRegion.value = loaded.autoSubmitDetectedRegion
+                    _defaultSearchMode.value = loaded.defaultSearchMode
+                    _ballEdgeSnap.value = loaded.ballEdgeSnap
+                    _ballIdleFade.value = loaded.ballIdleFade
+                    _showSetupWizard.value = loaded.showSetupWizard
                 }
                 .onFailure { error ->
                     _saveMessage.value = "配置读取失败，已进入安全默认状态: ${error.message ?: error.javaClass.simpleName}"
@@ -186,6 +208,55 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         preferencesManager.autoSubmitDetectedRegion = enabled
     }
 
+    fun updateDefaultSearchMode(mode: SearchSendMode) {
+        _defaultSearchMode.value = mode
+        preferencesManager.defaultSearchMode = mode
+    }
+
+    fun updateBallEdgeSnap(enabled: Boolean) {
+        _ballEdgeSnap.value = enabled
+        preferencesManager.ballEdgeSnap = enabled
+    }
+
+    fun updateBallIdleFade(enabled: Boolean) {
+        _ballIdleFade.value = enabled
+        preferencesManager.ballIdleFade = enabled
+    }
+
+    /**
+     * Fill the current config from a one-tap provider preset (endpoint/path/type/model).
+     * The API key is intentionally left untouched — the user still pastes their own.
+     */
+    fun applyProviderPreset(preset: ProviderPreset) {
+        _availableModels.value = emptyList()
+        val current = _config.value
+        val keepName = current.name.isNotBlank() &&
+            current.name != "默认配置" &&
+            !current.name.startsWith("新配置")
+        val updated = current.copy(
+            name = if (keepName) current.name else preset.name,
+            apiType = preset.apiType,
+            apiEndpoint = preset.endpoint,
+            apiPath = preset.apiPath,
+        ).withAutoModelCapabilities(preset.suggestedModel)
+        _config.value = updated
+
+        _saveMessage.value = if (preset.keysUrl.isBlank()) {
+            "已填充【${preset.name}】，请填写 API 密钥后保存"
+        } else {
+            "已填充【${preset.name}】，请填写 API 密钥后保存（密钥申请：${preset.keysUrl}）"
+        }
+    }
+
+    fun completeSetupWizard() {
+        preferencesManager.hasCompletedSetupWizard = true
+        _showSetupWizard.value = false
+    }
+
+    fun openSetupWizard() {
+        _showSetupWizard.value = true
+    }
+
     fun clearSaveMessage() {
         _saveMessage.value = null
     }
@@ -268,5 +339,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val providerConfigs: List<LLMConfig>,
         val activeProviderId: String,
         val autoSubmitDetectedRegion: Boolean,
+        val defaultSearchMode: SearchSendMode,
+        val ballEdgeSnap: Boolean,
+        val ballIdleFade: Boolean,
+        val showSetupWizard: Boolean,
     )
 }

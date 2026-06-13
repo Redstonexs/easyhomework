@@ -91,12 +91,16 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.model.ModelInfo
 import com.easyhomework.app.model.PromptTemplates
+import com.easyhomework.app.model.ProviderPreset
+import com.easyhomework.app.model.ProviderPresets
+import com.easyhomework.app.model.SearchSendMode
 import com.easyhomework.app.model.ThinkingDepth
 import com.easyhomework.app.service.FloatingBallService
 import com.easyhomework.app.ui.theme.AccentCyan
@@ -120,6 +124,10 @@ fun SettingsScreen(
     val availableModels by viewModel.availableModels.collectAsStateWithLifecycle()
     val isFetchingModels by viewModel.isFetchingModels.collectAsStateWithLifecycle()
     val autoSubmitDetectedRegion by viewModel.autoSubmitDetectedRegion.collectAsStateWithLifecycle()
+    val defaultSearchMode by viewModel.defaultSearchMode.collectAsStateWithLifecycle()
+    val ballEdgeSnap by viewModel.ballEdgeSnap.collectAsStateWithLifecycle()
+    val ballIdleFade by viewModel.ballIdleFade.collectAsStateWithLifecycle()
+    val showSetupWizard by viewModel.showSetupWizard.collectAsStateWithLifecycle()
     val latestCrashReport by viewModel.latestCrashReport.collectAsStateWithLifecycle()
     val clipboardManager = LocalClipboardManager.current
 
@@ -176,7 +184,10 @@ fun SettingsScreen(
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState()),
         ) {
-            SettingsHeader(setupStatus = setupStatus)
+            SettingsHeader(
+                setupStatus = setupStatus,
+                onStartWizard = viewModel::openSetupWizard,
+            )
 
             FloatingBallControlSection(
                 setupStatus = setupStatus,
@@ -202,8 +213,14 @@ fun SettingsScreen(
             UsageSection(
                 config = config,
                 autoSubmitDetectedRegion = autoSubmitDetectedRegion,
+                defaultSearchMode = defaultSearchMode,
+                ballEdgeSnap = ballEdgeSnap,
+                ballIdleFade = ballIdleFade,
                 onMiniBallChanged = { viewModel.updateConfig(config.copy(miniBall = it)) },
                 onAutoSubmitChanged = viewModel::updateAutoSubmitDetectedRegion,
+                onSearchModeChanged = viewModel::updateDefaultSearchMode,
+                onEdgeSnapChanged = viewModel::updateBallEdgeSnap,
+                onIdleFadeChanged = viewModel::updateBallIdleFade,
                 onNavigateToHistory = onNavigateToHistory,
             )
 
@@ -230,6 +247,7 @@ fun SettingsScreen(
                     activeProviderId = activeProviderId,
                     showApiKey = showApiKey,
                     showProviderMenu = showProviderMenu,
+                    onApplyPreset = viewModel::applyProviderPreset,
                     onProviderMenuChanged = { showProviderMenu = it },
                     onSelectProvider = viewModel::selectProvider,
                     onAddProvider = viewModel::addNewProvider,
@@ -312,11 +330,25 @@ fun SettingsScreen(
 
             Footer()
         }
+
+        if (showSetupWizard) {
+            SetupWizardDialog(
+                config = config,
+                onApplyPreset = viewModel::applyProviderPreset,
+                onApiKeyChange = { viewModel.updateConfig(config.copy(apiKey = it)) },
+                onFinish = {
+                    saveSettings()
+                    onFloatingBallChanged(true)
+                    viewModel.completeSetupWizard()
+                },
+                onDismiss = viewModel::completeSetupWizard,
+            )
+        }
     }
 }
 
 @Composable
-private fun SettingsHeader(setupStatus: SetupStatus) {
+private fun SettingsHeader(setupStatus: SetupStatus, onStartWizard: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -333,6 +365,160 @@ private fun SettingsHeader(setupStatus: SetupStatus) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Spacer(modifier = Modifier.height(12.dp))
+        if (setupStatus.isReady) {
+            OutlinedButton(onClick = onStartWizard, shape = RoundedCornerShape(8.dp)) {
+                Text("重新运行配置向导")
+            }
+        } else {
+            Button(
+                onClick = onStartWizard,
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+            ) {
+                Text("一键配置向导", fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SetupWizardDialog(
+    config: LLMConfig,
+    onApplyPreset: (ProviderPreset) -> Unit,
+    onApiKeyChange: (String) -> Unit,
+    onFinish: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var step by remember { mutableStateOf(0) }
+    var showKey by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        SettingsCard {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    "快速开始 · 步骤 ${step + 1}/3",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                when (step) {
+                    0 -> {
+                        Text(
+                            "第一步：选择 AI 服务商",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            "点击任意服务商即可自动填好接口地址与默认模型。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            ProviderPresets.ALL.forEach { preset ->
+                                FilterChip(
+                                    selected = false,
+                                    onClick = {
+                                        onApplyPreset(preset)
+                                        step = 1
+                                    },
+                                    label = { Text(preset.name, maxLines = 1, fontSize = 13.sp) },
+                                )
+                            }
+                        }
+                    }
+
+                    1 -> {
+                        Text(
+                            "第二步：填写「${config.name}」的 API 密钥",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        SettingsTextField(
+                            label = "API 密钥",
+                            value = config.apiKey,
+                            onValueChange = onApiKeyChange,
+                            placeholder = if (config.apiType == ApiType.OPENAI) "sk-..." else "sk-ant-...",
+                            icon = Icons.Outlined.Key,
+                            isPassword = !showKey,
+                            trailingIcon = {
+                                IconButton(onClick = { showKey = !showKey }) {
+                                    Icon(
+                                        if (showKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                        contentDescription = "切换密钥显示",
+                                    )
+                                }
+                            },
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { step = 0 }, shape = RoundedCornerShape(8.dp)) {
+                                Text("上一步")
+                            }
+                            Button(
+                                onClick = { step = 2 },
+                                enabled = config.apiKey.isNotBlank(),
+                                shape = RoundedCornerShape(8.dp),
+                            ) {
+                                Text("下一步")
+                            }
+                        }
+                    }
+
+                    else -> {
+                        Text(
+                            "第三步：确认并完成",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("服务商：${config.name}", style = MaterialTheme.typography.bodyMedium)
+                        Text("模型：${config.modelName}", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "接口：${config.apiEndpoint}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { step = 1 }, shape = RoundedCornerShape(8.dp)) {
+                                Text("上一步")
+                            }
+                            Button(
+                                onClick = onFinish,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                ),
+                            ) {
+                                Text("完成并开启悬浮球", fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    Text(
+                        "跳过",
+                        modifier = Modifier
+                            .clickable { onDismiss() }
+                            .padding(8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -629,22 +815,26 @@ private fun ModelDropdownItem(
 private fun UsageSection(
     config: LLMConfig,
     autoSubmitDetectedRegion: Boolean,
+    defaultSearchMode: SearchSendMode,
+    ballEdgeSnap: Boolean,
+    ballIdleFade: Boolean,
     onMiniBallChanged: (Boolean) -> Unit,
     onAutoSubmitChanged: (Boolean) -> Unit,
+    onSearchModeChanged: (SearchSendMode) -> Unit,
+    onEdgeSnapChanged: (Boolean) -> Unit,
+    onIdleFadeChanged: (Boolean) -> Unit,
     onNavigateToHistory: () -> Unit,
 ) {
     SettingsCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
             SectionTitle(title = "常用操作")
             Spacer(modifier = Modifier.height(8.dp))
-            ToggleSettingRow(
-                title = "迷你悬浮球",
-                subtitle = "更小、更透明，减少遮挡",
-                icon = Icons.Outlined.Minimize,
-                iconTint = AccentCyan,
-                checked = config.miniBall,
-                onCheckedChange = onMiniBallChanged,
+
+            SearchModeSelector(
+                selected = defaultSearchMode,
+                onSelect = onSearchModeChanged,
             )
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             ToggleSettingRow(
                 title = "自动提交识别区域",
@@ -655,6 +845,33 @@ private fun UsageSection(
                 onCheckedChange = onAutoSubmitChanged,
             )
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            ToggleSettingRow(
+                title = "迷你悬浮球",
+                subtitle = "更小、更透明，减少遮挡",
+                icon = Icons.Outlined.Minimize,
+                iconTint = AccentCyan,
+                checked = config.miniBall,
+                onCheckedChange = onMiniBallChanged,
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            ToggleSettingRow(
+                title = "贴边吸附",
+                subtitle = "拖动后自动吸附到屏幕边缘",
+                icon = Icons.Outlined.Tune,
+                iconTint = AccentCyan,
+                checked = ballEdgeSnap,
+                onCheckedChange = onEdgeSnapChanged,
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            ToggleSettingRow(
+                title = "空闲淡化",
+                subtitle = "悬浮球静置后变半透明，减少干扰",
+                icon = Icons.Outlined.Minimize,
+                iconTint = AccentOrange,
+                checked = ballIdleFade,
+                onCheckedChange = onIdleFadeChanged,
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             NavigationSettingRow(
                 title = "搜题历史",
                 subtitle = null,
@@ -662,6 +879,41 @@ private fun UsageSection(
                 iconTint = AccentCyan,
                 onClick = onNavigateToHistory,
             )
+        }
+    }
+}
+
+@Composable
+private fun SearchModeSelector(
+    selected: SearchSendMode,
+    onSelect: (SearchSendMode) -> Unit,
+) {
+    Column {
+        Text(
+            "搜题发送方式",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            selected.summary,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SearchSendMode.entries.forEach { mode ->
+                FilterChip(
+                    selected = selected == mode,
+                    onClick = { onSelect(mode) },
+                    label = { Text(mode.displayName, fontSize = 13.sp) },
+                )
+            }
         }
     }
 }
@@ -709,6 +961,7 @@ private fun ProviderAndEndpointContent(
     activeProviderId: String,
     showApiKey: Boolean,
     showProviderMenu: Boolean,
+    onApplyPreset: (ProviderPreset) -> Unit,
     onProviderMenuChanged: (Boolean) -> Unit,
     onSelectProvider: (String) -> Unit,
     onAddProvider: () -> Unit,
@@ -787,6 +1040,29 @@ private fun ProviderAndEndpointContent(
                     },
                 )
             }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+
+    Text(
+        "快速填充服务商",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ProviderPresets.ALL.forEach { preset ->
+            FilterChip(
+                selected = false,
+                onClick = { onApplyPreset(preset) },
+                label = { Text(preset.name, maxLines = 1, fontSize = 13.sp) },
+            )
         }
     }
 

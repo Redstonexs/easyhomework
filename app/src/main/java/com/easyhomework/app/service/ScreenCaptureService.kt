@@ -56,6 +56,9 @@ class ScreenCaptureService : Service() {
         private var captureRequestSequence = 0L
         private const val CAPTURE_TIMEOUT_MS = 2_000L
 
+        // Time given to the mirrored display to have a fresh frame ready before we grab it.
+        private const val RENDER_SETTLE_MS = 64L
+
         fun isProjectionReady(): Boolean {
             return instance?.mediaProjection != null
         }
@@ -252,7 +255,7 @@ class ScreenCaptureService : Service() {
             } finally {
                 image?.close()
             }
-        }, 100) // Small delay to ensure screen has rendered
+        }, RENDER_SETTLE_MS)
     }
 
     private fun completeCaptureSuccess(requestId: Long) {

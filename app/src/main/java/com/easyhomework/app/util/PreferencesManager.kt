@@ -9,6 +9,7 @@ import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.LLMConfig
 import com.easyhomework.app.model.PromptTemplates
+import com.easyhomework.app.model.SearchSendMode
 import com.easyhomework.app.model.ThinkingDepth
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -256,6 +257,35 @@ class PreferencesManager(context: Context) {
         get() = prefs.getBoolean(KEY_AUTO_SUBMIT_DETECTED_REGION, true)
         set(value) = prefs.edit().putBoolean(KEY_AUTO_SUBMIT_DETECTED_REGION, value).apply()
 
+    /**
+     * Default way a captured question is delivered to the model
+     * (one-tap 搜题 uses this instead of asking每次选择识图 / 识字).
+     */
+    var defaultSearchMode: SearchSendMode
+        get() = SearchSendMode.fromString(prefs.getString(KEY_DEFAULT_SEARCH_MODE, SearchSendMode.AUTO.name))
+        set(value) = prefs.edit().putString(KEY_DEFAULT_SEARCH_MODE, value.name).apply()
+
+    /**
+     * Snap the floating ball to the nearest screen edge when released.
+     */
+    var ballEdgeSnap: Boolean
+        get() = prefs.getBoolean(KEY_BALL_EDGE_SNAP, true)
+        set(value) = prefs.edit().putBoolean(KEY_BALL_EDGE_SNAP, value).apply()
+
+    /**
+     * Fade the floating ball to a low alpha after it has been idle for a while.
+     */
+    var ballIdleFade: Boolean
+        get() = prefs.getBoolean(KEY_BALL_IDLE_FADE, true)
+        set(value) = prefs.edit().putBoolean(KEY_BALL_IDLE_FADE, value).apply()
+
+    /**
+     * Whether the first-run setup wizard has been completed or skipped.
+     */
+    var hasCompletedSetupWizard: Boolean
+        get() = prefs.getBoolean(KEY_SETUP_WIZARD_DONE, false)
+        set(value) = prefs.edit().putBoolean(KEY_SETUP_WIZARD_DONE, value).apply()
+
     // ---- Floating Ball State ----
 
     var isFloatingBallEnabled: Boolean
@@ -319,6 +349,10 @@ class PreferencesManager(context: Context) {
         private const val KEY_THINKING_DEPTH = "thinking_depth"
         private const val KEY_MINI_BALL = "mini_ball"
         private const val KEY_AUTO_SUBMIT_DETECTED_REGION = "auto_submit_detected_region"
+        private const val KEY_DEFAULT_SEARCH_MODE = "default_search_mode"
+        private const val KEY_BALL_EDGE_SNAP = "ball_edge_snap"
+        private const val KEY_BALL_IDLE_FADE = "ball_idle_fade"
+        private const val KEY_SETUP_WIZARD_DONE = "setup_wizard_done"
         private const val KEY_FLOATING_BALL_ENABLED = "floating_ball_enabled"
         private const val KEY_BALL_X = "ball_x"
         private const val KEY_BALL_Y = "ball_y"
