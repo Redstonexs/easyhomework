@@ -120,19 +120,28 @@ data class LLMConfig(
          * Well-known vision-capable model patterns for auto-detection.
          */
         private val VISION_MODEL_PATTERNS = listOf(
-            "gpt-4o", "gpt-4.1", "gpt-4-vision", "gpt-4-turbo", "gpt-5",
-            "o1", "o3", "o4",
-            "claude-3", "claude-3.5", "claude-3.7", "claude-4", "claude-sonnet-4", "claude-opus-4",
-            "gemini-pro-vision", "gemini-1.5", "gemini-2", "gemini-2.5",
-            "qwen-vl", "qwen2-vl", "qwen2.5-vl", "qwen2.5-omni", "qwen-omni", "qvq",
-            "deepseek-vl",
-            "glm-4v", "glm-4.1v",
-            "internvl",
-            "minicpm-v", "minicpm-o",
-            "llava",
-            "pixtral",
-            "llama-3.2-vision",
-            "llama-4",
+            // OpenAI (o-series reasoning models handled by O_SERIES_VISION_REGEX)
+            "gpt-4o", "gpt-4.1", "gpt-4-vision", "gpt-4-turbo", "gpt-5", "chatgpt-4o",
+            // Anthropic Claude handled separately (see modelSupportsVision)
+            // Google
+            "gemini-1.5", "gemini-2", "gemini-pro-vision", "gemma-3",
+            // Alibaba Qwen
+            "qwen-vl", "qwen2-vl", "qwen2.5-vl", "qwen3-vl", "qwen2.5-omni", "qwen-omni", "qvq",
+            // Zhipu GLM (numbered "*v" variants also caught by GLM_VISION_REGEX)
+            "glm-4v", "glm-4.1v", "glm-4.5v",
+            // DeepSeek / open multimodal
+            "deepseek-vl", "internvl", "minicpm-v", "minicpm-o", "llava",
+            // Mistral
+            "pixtral", "mistral-small-3", "mistral-medium-3",
+            // Meta Llama
+            "llama-3.2-vision", "llama-4",
+            // xAI Grok
+            "grok-2-vision", "grok-4", "grok-vision",
+            // Others
+            "step-1v", "step-1o", "step-3", "yi-vision", "yi-vl",
+            "doubao-vision", "doubao-1.5-vision",
+            "phi-3-vision", "phi-3.5-vision", "phi-4-multimodal",
+            "nova-lite", "nova-pro",
         )
 
         private val TEXT_ONLY_MODEL_PATTERNS = listOf(
@@ -147,7 +156,23 @@ data class LLMConfig(
             "mixtral",
             "text-embedding",
             "embedding",
+            // Reasoning "mini"/"preview" models that are text-only (full o1/o3 do see images)
+            "o1-mini",
+            "o1-preview",
+            "o3-mini",
         )
+
+        /** `vl` as a standalone token, e.g. `qwen3-vl`, `deepseek-vl`, `yi-vl` (not `internvl`). */
+        private val VL_TOKEN_REGEX = Regex("(^|[/_.:-])vl([/_.:-]|$)")
+
+        /** Zhipu numbered vision variants: `glm-4v`, `glm-4.1v`, `glm-4.5v`. */
+        private val GLM_VISION_REGEX = Regex("glm-[0-9.]+v")
+
+        /** OpenAI o-series reasoning models (`o1`, `o3`, `o4-mini`, ...) — multimodal. */
+        private val O_SERIES_VISION_REGEX = Regex("(^|[/_.:-])o[134](-|$)")
+
+        /** Legacy Claude lines that are text-only (everything newer is multimodal). */
+        private val CLAUDE_LEGACY_TEXT_MARKERS = listOf("claude-1", "claude-2", "claude-instant")
 
         private val FUNCTION_CALLING_MODEL_PATTERNS = listOf(
             "gpt-4",
@@ -179,12 +204,26 @@ data class LLMConfig(
          */
         fun modelSupportsVision(modelName: String): Boolean {
             val lower = modelName.lowercase().trim()
-            if (lower.isBlank()) return false
-            if (VISION_MODEL_PATTERNS.any { lower.contains(it) }) return true
-            if (TEXT_ONLY_MODEL_PATTERNS.any { lower.contains(it) }) return false
-
-            return Regex("(^|[/_.:-])o[134](-|$)").containsMatchIn(lower)
+            // Precedence (top wins): explicit vision markers, then vl/glm tokens, then
+            // Claude, then known vision families; known text-only families are excluded;
+            // finally the OpenAI o-series reasoning models (minis already excluded).
+            return when {
+                lower.isBlank() -> false
+                lower.contains("vision") || lower.contains("multimodal") -> true
+                VL_TOKEN_REGEX.containsMatchIn(lower) || GLM_VISION_REGEX.containsMatchIn(lower) -> true
+                isModernClaude(lower) -> true
+                VISION_MODEL_PATTERNS.any { lower.contains(it) } -> true
+                TEXT_ONLY_MODEL_PATTERNS.any { lower.contains(it) } -> false
+                else -> O_SERIES_VISION_REGEX.containsMatchIn(lower)
+            }
         }
+
+        /**
+         * Anthropic Claude accepts images on every model except the legacy
+         * Claude 1 / 2 / instant text line.
+         */
+        private fun isModernClaude(lower: String): Boolean =
+            lower.contains("claude") && CLAUDE_LEGACY_TEXT_MARKERS.none { lower.contains(it) }
 
         fun modelSupportsFunctionCalling(apiType: ApiType, modelName: String): Boolean {
             val lower = modelName.lowercase()

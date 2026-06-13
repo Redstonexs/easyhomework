@@ -271,7 +271,7 @@ class LLMRepository {
             dataArray.map { it.asJsonObject }
                 .map { modelJson ->
                     val id = modelJson.get("id")?.asString ?: return@map null
-                    val visionCapability = detectVisionCapability(modelJson, apiType, id)
+                    val visionCapability = detectVisionCapability(modelJson, id)
                     val supportsFunctionCalling = detectFunctionCallingCapability(modelJson, apiType, id)
                     val supportsThinking = detectThinkingCapability(modelJson, apiType, id)
                     ModelInfo(
@@ -292,12 +292,14 @@ class LLMRepository {
     /**
      * Detect vision capability from API metadata first, then fall back to model-name patterns.
      */
-    private fun detectVisionCapability(modelJson: JsonObject, apiType: ApiType, modelId: String): CapabilityDetection {
+    private fun detectVisionCapability(modelJson: JsonObject, modelId: String): CapabilityDetection {
         return when (detectVisionCapabilityFromMetadata(modelJson)) {
-            CapabilityStatus.SUPPORTED -> CapabilityDetection(supported = true, source = CapabilitySource.API)
-            CapabilityStatus.UNSUPPORTED -> CapabilityDetection(supported = false, source = CapabilitySource.API_UNSUPPORTED)
+            CapabilityStatus.SUPPORTED ->
+                CapabilityDetection(supported = true, source = CapabilitySource.API)
+            CapabilityStatus.UNSUPPORTED ->
+                CapabilityDetection(supported = false, source = CapabilitySource.API_UNSUPPORTED)
             CapabilityStatus.UNKNOWN -> CapabilityDetection(
-                supported = fallbackVisionCapability(apiType, modelId),
+                supported = LLMConfig.modelSupportsVision(modelId),
                 source = CapabilitySource.AUTO,
             )
         }
@@ -337,13 +339,40 @@ class LLMRepository {
     private fun detectVisionInputCapability(modelJson: JsonObject): CapabilityStatus {
         for (field in VISION_INPUT_FIELDS) {
             val element = modelJson.get(field) ?: continue
-            return if (elementContainsVisionToken(element)) {
-                CapabilityStatus.SUPPORTED
-            } else {
-                CapabilityStatus.UNSUPPORTED
-            }
+            val status = inputModalityVisionStatus(element)
+            // A present-but-empty/uninformative field stays UNKNOWN — keep looking.
+            if (status != CapabilityStatus.UNKNOWN) return status
         }
         return CapabilityStatus.UNKNOWN
+    }
+
+    /**
+     * Interpret a modality descriptor as vision *input* support. Handles arrays
+     * (`["text", "image"]`), arrow strings (`"text+image->text"`) and plain
+     * strings (`"multimodal"`). For arrow strings only the left/input side
+     * counts, so image-generation models (`"text->image"`) are not mistaken for
+     * vision input.
+     */
+    private fun inputModalityVisionStatus(element: JsonElement?): CapabilityStatus {
+        if (element == null || element.isJsonNull) return CapabilityStatus.UNKNOWN
+        return when {
+            element.isJsonArray -> when {
+                element.asJsonArray.size() == 0 -> CapabilityStatus.UNKNOWN
+                element.asJsonArray.any { elementContainsVisionToken(it) } -> CapabilityStatus.SUPPORTED
+                else -> CapabilityStatus.UNSUPPORTED
+            }
+            element.isJsonPrimitive -> {
+                val raw = element.asString
+                when {
+                    raw.isBlank() -> CapabilityStatus.UNKNOWN
+                    containsVisionToken(raw.substringBefore("->")) -> CapabilityStatus.SUPPORTED
+                    else -> CapabilityStatus.UNSUPPORTED
+                }
+            }
+            element.isJsonObject ->
+                if (elementContainsVisionToken(element)) CapabilityStatus.SUPPORTED else CapabilityStatus.UNSUPPORTED
+            else -> CapabilityStatus.UNKNOWN
+        }
     }
 
     private fun detectVisionFeatureCapability(modelJson: JsonObject): CapabilityStatus {
@@ -352,16 +381,6 @@ class LLMRepository {
             if (elementContainsVisionToken(element)) return CapabilityStatus.SUPPORTED
         }
         return CapabilityStatus.UNKNOWN
-    }
-
-    private fun fallbackVisionCapability(apiType: ApiType, modelId: String): Boolean {
-        val lower = modelId.lowercase()
-        val isAnthropicVisionModel = apiType == ApiType.ANTHROPIC && (
-            lower.contains("claude-3") ||
-                lower.contains("claude-sonnet-4") ||
-                lower.contains("claude-opus-4")
-            )
-        return isAnthropicVisionModel || LLMConfig.modelSupportsVision(modelId)
     }
 
     private fun booleanValue(element: JsonElement?): Boolean? {
@@ -391,6 +410,8 @@ class LLMRepository {
 
     private fun containsVisionToken(value: String): Boolean {
         val lower = value.lowercase()
+        // Image *generation/output* features must not count as image *input* support.
+        if (IMAGE_OUTPUT_TOKENS.any { lower.contains(it) }) return false
         return VISION_TOKENS.any { token -> lower.contains(token) }
     }
 
@@ -1131,6 +1152,22 @@ class LLMRepository {
             "vision",
             "visual",
             "multimodal",
+        )
+
+        /** Tokens that denote image *output/generation*, which is not vision *input*. */
+        val IMAGE_OUTPUT_TOKENS = listOf(
+            "image_generation",
+            "image-generation",
+            "image generation",
+            "imagegen",
+            "image_gen",
+            "img_generation",
+            "text-to-image",
+            "text_to_image",
+            "texttoimage",
+            "image_output",
+            "output_image",
+            "generate_image",
         )
         val FUNCTION_CALLING_CAPABILITY_FIELDS = listOf("function_calling", "tool_use")
         val FUNCTION_CALLING_FEATURE_TOKENS = setOf("function_calling", "tool_use", "tools")
