@@ -1593,7 +1593,9 @@ private fun visionSupportDescription(source: CapabilitySource): String {
     return when (source) {
         CapabilitySource.API -> "模型接口明确支持图像输入，可手动覆盖"
         CapabilitySource.API_UNSUPPORTED -> "模型接口明确不支持图像输入，可手动覆盖"
-        CapabilitySource.AUTO -> "优先接口识别；接口缺失时按模型名称自动判断"
+        CapabilitySource.CATALOG -> "模型库（models.dev）识别为支持图像输入，可手动覆盖"
+        CapabilitySource.CATALOG_UNSUPPORTED -> "模型库（models.dev）识别为不支持图像输入，可手动覆盖"
+        CapabilitySource.AUTO -> "优先接口/模型库识别；缺失时按模型名称自动判断"
         CapabilitySource.MANUAL -> "已手动设置，截屏后可直接发送图片给模型"
     }
 }

@@ -6,10 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.LLMConfig
+import com.easyhomework.app.model.ModelCatalog
 import com.easyhomework.app.model.ModelInfo
 import com.easyhomework.app.model.ProviderPreset
 import com.easyhomework.app.model.SearchSendMode
 import com.easyhomework.app.network.LLMRepository
+import com.easyhomework.app.network.ModelCatalogLoader
 import com.easyhomework.app.util.CrashReporter
 import com.easyhomework.app.util.PreferencesManager
 import java.util.UUID
@@ -69,6 +71,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     init {
         loadPreferences()
+        // Ensure the models.dev catalog is loaded and opportunistically refreshed while in settings.
+        viewModelScope.launch { ModelCatalogLoader.refreshIfStale(application) }
     }
 
     private fun loadPreferences() {
@@ -325,12 +329,21 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun LLMConfig.withAutoModelCapabilities(modelName: String): LLMConfig {
-        val hasManualVisionOverride = visionCapabilitySource == CapabilitySource.MANUAL
+        val manualVision = visionCapabilitySource == CapabilitySource.MANUAL
+        val catalogVision = ModelCatalog.supportsVision(modelName)
+        val (vision, visionSource) = when {
+            manualVision -> supportsVision to CapabilitySource.MANUAL
+            catalogVision != null ->
+                catalogVision to if (catalogVision) CapabilitySource.CATALOG else CapabilitySource.CATALOG_UNSUPPORTED
+            else -> LLMConfig.modelSupportsVision(modelName) to CapabilitySource.AUTO
+        }
         return copy(
             modelName = modelName,
-            supportsVision = if (hasManualVisionOverride) supportsVision else LLMConfig.modelSupportsVision(modelName),
-            visionCapabilitySource = if (hasManualVisionOverride) CapabilitySource.MANUAL else CapabilitySource.AUTO,
-            supportsFunctionCalling = LLMConfig.modelSupportsFunctionCalling(apiType, modelName),
+            supportsVision = vision,
+            visionCapabilitySource = visionSource,
+            supportsFunctionCalling = ModelCatalog.supportsToolCalling(modelName)
+                ?: LLMConfig.modelSupportsFunctionCalling(apiType, modelName),
+            supportsThinking = ModelCatalog.supportsReasoning(modelName) ?: supportsThinking,
         )
     }
 

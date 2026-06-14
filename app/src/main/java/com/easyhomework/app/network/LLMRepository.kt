@@ -6,6 +6,7 @@ import com.easyhomework.app.model.ApiType
 import com.easyhomework.app.model.CapabilitySource
 import com.easyhomework.app.model.ChatMessage
 import com.easyhomework.app.model.LLMConfig
+import com.easyhomework.app.model.ModelCatalog
 import com.easyhomework.app.model.ModelInfo
 import com.easyhomework.app.model.PromptTemplates
 import com.easyhomework.app.model.ThinkingDepth
@@ -290,7 +291,8 @@ class LLMRepository {
     }
 
     /**
-     * Detect vision capability from API metadata first, then fall back to model-name patterns.
+     * Detect vision capability: explicit provider metadata first (endpoint-specific truth),
+     * then the models.dev catalog, then model-name heuristics.
      */
     private fun detectVisionCapability(modelJson: JsonObject, modelId: String): CapabilityDetection {
         return when (detectVisionCapabilityFromMetadata(modelJson)) {
@@ -298,11 +300,18 @@ class LLMRepository {
                 CapabilityDetection(supported = true, source = CapabilitySource.API)
             CapabilityStatus.UNSUPPORTED ->
                 CapabilityDetection(supported = false, source = CapabilitySource.API_UNSUPPORTED)
-            CapabilityStatus.UNKNOWN -> CapabilityDetection(
-                supported = LLMConfig.modelSupportsVision(modelId),
-                source = CapabilitySource.AUTO,
-            )
+            CapabilityStatus.UNKNOWN -> catalogVisionDetection(modelId)
+                ?: CapabilityDetection(
+                    supported = LLMConfig.modelSupportsVision(modelId),
+                    source = CapabilitySource.AUTO,
+                )
         }
+    }
+
+    private fun catalogVisionDetection(modelId: String): CapabilityDetection? {
+        val supported = ModelCatalog.supportsVision(modelId) ?: return null
+        val source = if (supported) CapabilitySource.CATALOG else CapabilitySource.CATALOG_UNSUPPORTED
+        return CapabilityDetection(supported = supported, source = source)
     }
 
     private fun detectVisionCapabilityFromMetadata(modelJson: JsonObject): CapabilityStatus {
@@ -421,9 +430,13 @@ class LLMRepository {
     private fun detectFunctionCallingCapability(modelJson: JsonObject, apiType: ApiType, modelId: String): Boolean {
         val capabilities = objectValue(modelJson.get("capabilities"))
         val features = arrayValue(modelJson.get("supported_features"))
-        return hasTrueBooleanCapability(capabilities, FUNCTION_CALLING_CAPABILITY_FIELDS) ||
-            containsAnyPrimitiveToken(features, FUNCTION_CALLING_FEATURE_TOKENS) ||
-            fallbackFunctionCallingCapability(apiType, modelId)
+        if (hasTrueBooleanCapability(capabilities, FUNCTION_CALLING_CAPABILITY_FIELDS) ||
+            containsAnyPrimitiveToken(features, FUNCTION_CALLING_FEATURE_TOKENS)
+        ) {
+            return true
+        }
+        return ModelCatalog.supportsToolCalling(modelId)
+            ?: fallbackFunctionCallingCapability(apiType, modelId)
     }
 
     private fun fallbackFunctionCallingCapability(apiType: ApiType, modelId: String): Boolean {
@@ -435,8 +448,9 @@ class LLMRepository {
      */
     private fun detectThinkingCapability(modelJson: JsonObject, apiType: ApiType, modelId: String): Boolean {
         val capabilities = objectValue(modelJson.get("capabilities"))
-        return hasTrueBooleanCapability(capabilities, THINKING_CAPABILITY_FIELDS) ||
-            fallbackThinkingCapability(apiType, modelId)
+        if (hasTrueBooleanCapability(capabilities, THINKING_CAPABILITY_FIELDS)) return true
+        return ModelCatalog.supportsReasoning(modelId)
+            ?: fallbackThinkingCapability(apiType, modelId)
     }
 
     private fun fallbackThinkingCapability(apiType: ApiType, modelId: String): Boolean {

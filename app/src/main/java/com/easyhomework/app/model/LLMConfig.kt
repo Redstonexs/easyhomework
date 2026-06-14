@@ -57,6 +57,8 @@ enum class CapabilitySource(val displayName: String) {
     AUTO("自动判断"),
     API("接口识别支持"),
     API_UNSUPPORTED("接口识别不支持"),
+    CATALOG("模型库识别支持"),
+    CATALOG_UNSUPPORTED("模型库识别不支持"),
     MANUAL("手动设置"),
     ;
 
@@ -107,7 +109,10 @@ data class LLMConfig(
             CapabilitySource.MANUAL -> supportsVision
             CapabilitySource.API -> supportsVision || modelSupportsVision(modelName)
             CapabilitySource.API_UNSUPPORTED -> false
-            CapabilitySource.AUTO -> modelSupportsVision(modelName)
+            CapabilitySource.CATALOG -> supportsVision
+            CapabilitySource.CATALOG_UNSUPPORTED -> false
+            // models.dev catalog is authoritative when it knows the model; else name heuristic.
+            CapabilitySource.AUTO -> ModelCatalog.supportsVision(modelName) ?: modelSupportsVision(modelName)
         }
     }
 

@@ -3,6 +3,7 @@ package com.easyhomework.app
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import com.easyhomework.app.network.ModelCatalogLoader
 import com.easyhomework.app.util.CrashReporter
 
 class EasyHomeworkApp : Application() {
@@ -20,6 +21,10 @@ class EasyHomeworkApp : Application() {
         super.onCreate()
         runCatching {
             createNotificationChannels()
+        }
+        // Load the bundled models.dev capability snapshot off the main thread (no network here).
+        runCatching {
+            Thread { ModelCatalogLoader.loadLocal(this) }.apply { isDaemon = true }.start()
         }
         CrashReporter.setStage(this, "application_ready")
     }
