@@ -65,3 +65,9 @@ Thumbs.db
 
 # Signing config
 signing.properties
+
+# Claude Code project skills (kept local; global essentials live in ~/.claude/skills)
+.claude/skills/
+
+# opencode project skills (kept local)
+.opencode/skills/
